@@ -1,2 +1,3 @@
 fastapi
 uvicorn[standard]
+git+https://github.com/clashofattack7-create/option-chain-live.git
