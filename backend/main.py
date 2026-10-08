@@ -469,7 +469,174 @@ def status():
 # ============================================================
 # MARKET API
 # ============================================================
+def calculate_candle_indicators(candles):
+    if not candles or len(candles) < 2:
+        return {
+            "vwap": 0,
+            "ema9": 0,
+            "ema21": 0,
+            "rsi": 50,
+            "atr": 0,
+            "volume": 0,
+            "structure": "WAITING FOR CANDLE DATA"
+        }
 
+    closes = [float(c.get("close", 0)) for c in candles]
+    highs = [float(c.get("high", 0)) for c in candles]
+    lows = [float(c.get("low", 0)) for c in candles]
+    volumes = [float(c.get("volume", 0)) for c in candles]
+
+    closes = [x for x in closes if x > 0]
+    highs = [x for x in highs if x > 0]
+    lows = [x for x in lows if x > 0]
+
+    if not closes:
+        return {
+            "vwap": 0,
+            "ema9": 0,
+            "ema21": 0,
+            "rsi": 50,
+            "atr": 0,
+            "volume": 0,
+            "structure": "WAITING FOR CANDLE DATA"
+        }
+
+    # -------------------------
+    # VWAP
+    # -------------------------
+    cumulative_pv = 0
+    cumulative_volume = 0
+
+    for candle in candles:
+        high = float(candle.get("high", 0))
+        low = float(candle.get("low", 0))
+        close = float(candle.get("close", 0))
+        volume = float(candle.get("volume", 0))
+
+        if close > 0:
+            typical_price = (high + low + close) / 3
+            cumulative_pv += typical_price * volume
+            cumulative_volume += volume
+
+    if cumulative_volume > 0:
+        vwap = cumulative_pv / cumulative_volume
+    else:
+        vwap = closes[-1]
+
+    # -------------------------
+    # EMA helper
+    # -------------------------
+    def ema(values, period):
+        if not values:
+            return 0
+
+        alpha = 2 / (period + 1)
+        result = values[0]
+
+        for value in values[1:]:
+            result = (value * alpha) + (result * (1 - alpha))
+
+        return result
+
+    ema9 = ema(closes, 9)
+    ema21 = ema(closes, 21)
+
+    # -------------------------
+    # RSI 14
+    # -------------------------
+    if len(closes) < 15:
+        rsi = 50
+    else:
+        gains = []
+        losses = []
+
+        for i in range(1, len(closes)):
+            change = closes[i] - closes[i - 1]
+
+            if change > 0:
+                gains.append(change)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(abs(change))
+
+        period = min(14, len(gains))
+
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+
+        if avg_loss == 0:
+            rsi = 100
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+
+    # -------------------------
+    # ATR 14
+    # -------------------------
+    true_ranges = []
+
+    for i in range(1, len(candles)):
+        high = float(candles[i].get("high", 0))
+        low = float(candles[i].get("low", 0))
+        previous_close = float(
+            candles[i - 1].get("close", 0)
+        )
+
+        if high > 0 and low > 0 and previous_close > 0:
+            tr = max(
+                high - low,
+                abs(high - previous_close),
+                abs(low - previous_close)
+            )
+
+            true_ranges.append(tr)
+
+    if true_ranges:
+        atr_period = min(14, len(true_ranges))
+        atr = sum(true_ranges[-atr_period:]) / atr_period
+    else:
+        atr = 0
+
+    # -------------------------
+    # Volume
+    # -------------------------
+    valid_volumes = [v for v in volumes if v >= 0]
+
+    if valid_volumes:
+        current_volume = valid_volumes[-1]
+    else:
+        current_volume = 0
+
+    # -------------------------
+    # Market structure
+    # -------------------------
+    structure = "SIDEWAYS"
+
+    if len(closes) >= 6:
+        recent_highs = highs[-6:]
+        recent_lows = lows[-6:]
+
+        previous_high = max(recent_highs[:-3])
+        latest_high = max(recent_highs[-3:])
+
+        previous_low = min(recent_lows[:-3])
+        latest_low = min(recent_lows[-3:])
+
+        if latest_high > previous_high and latest_low > previous_low:
+            structure = "HH-HL"
+        elif latest_high < previous_high and latest_low < previous_low:
+            structure = "LH-LL"
+
+    return {
+        "vwap": round(vwap, 2),
+        "ema9": round(ema9, 2),
+        "ema21": round(ema21, 2),
+        "rsi": round(rsi, 2),
+        "atr": round(atr, 2),
+        "volume": round(current_volume, 2),
+        "structure": structure
+    }
 @app.get("/api/market")
 def market(symbol: str = "NIFTY"):
 
@@ -550,20 +717,21 @@ def market(symbol: str = "NIFTY"):
     # EXTRACT LIVE CHAIN
     # ========================================================
 
-    rows = live.get("rows", [])
+   rows = live.get("rows", [])
 
-    spot = safe_float(live.get("spot"))
+spot = safe_float(live.get("spot"))
 
-    total_call_oi = 0
-    total_put_oi = 0
+candles = live.get("candles", [])
+technical = calculate_candle_indicators(candles)
+total_call_oi = 0
+total_put_oi = 0
 
-    total_call_change_oi = 0
-    total_put_change_oi = 0
+total_call_change_oi = 0
+total_put_change_oi = 0
 
-    iv_values = []
+iv_values = []
 
-    for row in rows:
-
+for row in rows:
         ce = row.get("ce", {})
         pe = row.get("pe", {})
 
@@ -712,21 +880,25 @@ def market(symbol: str = "NIFTY"):
 
         "statement": statement,
 
-        "vwap": 0,
-        "ema9": 0,
-        "ema21": 0,
-        "rsi": 50,
-        "atr": 0,
-        "volume": 0,
-
+               "vwap": technical["vwap"],
+        "ema9": technical["ema9"],
+        "ema21": technical["ema21"],
+        "rsi": technical["rsi"],
+        "atr": technical["atr"],
+        "volume": technical["volume"],
         "pcr": pcr,
         "callOI": total_call_oi,
         "putOI": total_put_oi,
         "iv": average_iv,
 
-        "vwapStatus": "WAITING FOR CANDLE DATA",
-        "structure": "WAITING FOR CANDLE DATA",
-
+        "vwapStatus": (
+    "ABOVE VWAP"
+    if spot > technical["vwap"]
+    else "BELOW VWAP"
+    if spot < technical["vwap"]
+    else "AT VWAP"
+),
+       "structure": technical["structure"],
         "resistance": "--",
         "resistance2": "--",
         "support": "--",
