@@ -597,8 +597,8 @@ def technical_analysis(candles, spot):
             "score": 0,
             "reasons": ["5-minute candle data unavailable"],
         }
-    futures_candles = fetch_futures_candles(symbol)
     
+        futures_candles = fetch_futures_candles(symbol)
     ema9 = ema_series(closes, 9)[-1]
     ema21 = ema_series(closes, 21)[-1]
         vwap_source = futures_candles if futures_candles else candles
