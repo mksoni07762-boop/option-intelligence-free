@@ -560,7 +560,7 @@ async function loadMarketData() {
 
     try {
 
-        const response = await fetch("/api/market");
+        const response = await fetch("/api/market?symbol=" + currentIndex);
 
         if (!response.ok) {
             throw new Error("API error");
