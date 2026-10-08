@@ -1074,7 +1074,7 @@ def warm_chart():
 
 def fetch_chart(symbol, interval=5, days=3):
     """
-    Fetch index 5-minute candles.
+    Fetch live NSE index candles from the NSE charting API.
     """
 
     token = INDEX_TOKENS.get(symbol)
@@ -1082,32 +1082,52 @@ def fetch_chart(symbol, interval=5, days=3):
     if not token:
         return []
 
-    warm_chart()
-
-    end_time = int(
-        time.time()
-    )
-
-    start_time = int(
-        time.time() -
-        days * 86400
-    )
-
-    payload = {
-        "exchange": "NSE",
-        "symbol": token,
-        "symbolType": "Index",
-        "startTime": start_time,
-        "endTime": end_time,
-        "timeInterval": interval,
-        "chartType": "I"
-    }
-
     try:
+        warm_chart()
+
+        end_time = int(time.time())
+        start_time = int(
+            time.time() - days * 86400
+        )
+
+        payload = {
+            "token": str(token),
+            "fromDate": start_time,
+            "toDate": end_time,
+            "symbol": INDEX_NAMES.get(
+                symbol,
+                symbol
+            ),
+            "symbolType": "Index",
+            "chartType": "I",
+            "timeInterval": int(interval)
+        }
+
+        # Charting NSE uses its own domain/session.
+        chart_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/140.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "application/json, text/plain, */*"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Content-Type": "application/json",
+            "Origin": (
+                "https://charting.nseindia.com"
+            ),
+            "Referer": (
+                "https://charting.nseindia.com/"
+            )
+        }
 
         response = session.post(
             CHART_URL,
             json=payload,
+            headers=chart_headers,
             timeout=20
         )
 
@@ -1116,9 +1136,127 @@ def fetch_chart(symbol, interval=5, days=3):
 
         data = response.json()
 
+        if not isinstance(data, dict):
+            return []
+
+        # NSE normally returns:
+        #
+        # {
+        #   "status": true,
+        #   "data": [...]
+        # }
+
+        if data.get("status") is False:
+            return []
+
+        raw_candles = data.get(
+            "data",
+            []
+        )
+
+        if not isinstance(raw_candles, list):
+            return []
+
+        candles = []
+
+        for item in raw_candles:
+
+            if not isinstance(item, dict):
+                continue
+
+            timestamp = first_value(
+                item,
+                [
+                    "time",
+                    "timestamp"
+                ],
+                None
+            )
+
+            open_price = safe_float(
+                first_value(
+                    item,
+                    [
+                        "open",
+                        "Open",
+                        "o"
+                    ],
+                    0
+                )
+            )
+
+            high = safe_float(
+                first_value(
+                    item,
+                    [
+                        "high",
+                        "High",
+                        "h"
+                    ],
+                    0
+                )
+            )
+
+            low = safe_float(
+                first_value(
+                    item,
+                    [
+                        "low",
+                        "Low",
+                        "l"
+                    ],
+                    0
+                )
+            )
+
+            close = safe_float(
+                first_value(
+                    item,
+                    [
+                        "close",
+                        "Close",
+                        "c"
+                    ],
+                    0
+                )
+            )
+
+            volume = safe_float(
+                first_value(
+                    item,
+                    [
+                        "volume",
+                        "Volume",
+                        "v"
+                    ],
+                    0
+                )
+            )
+
+            if close <= 0:
+                continue
+
+            candles.append({
+                "time": timestamp,
+                "open": open_price,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume
+            })
+
+        candles.sort(
+            key=lambda x: (
+                x["time"]
+                if x["time"] is not None
+                else 0
+            )
+        )
+
+        return candles
+
     except Exception:
         return []
-
     return parse_chart_response(data)
 
 
