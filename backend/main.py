@@ -293,9 +293,9 @@ def fetch_futures_candles(symbol):
     search_symbol = "NIFTY" if symbol == "NIFTY" else "BANKNIFTY"
 
     try:
-        response = s.post(
+        response = s.get(
     CHART + "/v1/exchanges/symbolsDynamic",
-    json={
+    params={
         "symbol": search_symbol,
         "segment": "FO",
     },
