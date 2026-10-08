@@ -1,38 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Option Intelligence Engine</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #07111f;
+    color: #ffffff;
+}
+
+.container {
+    width: 95%;
+    max-width: 1450px;
+    margin: auto;
+    padding: 20px 0 40px;
+}
+
+/* HEADER */
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 18px;
+}
+
+.title {
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.subtitle {
+    color: #9fb0c5;
+    margin-top: 5px;
+    font-size: 13px;
+}
+
+.status {
+    background: #102238;
+    border: 1px solid #29415f;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+}
+
+/* INDEX BUTTONS */
+
+.index-selector {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.index-btn {
+    border: 1px solid #35516f;
+    background: #102238;
+    color: white;
+    padding: 10px 24px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.index-btn:hover {
+    background: #18334f;
+}
+
+.index-btn.active {
+    background: #1d5fa7;
+    border-color: #4e9be8;
+}
+
+/* CARDS */
+
+.card {
+    background: #0d1b2c;
+    border: 1px solid #203952;
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 16px;
+}
+
+.card-title {
+    font-size: 15px;
+    font-weight: bold;
+    margin-bottom: 15px;
+    color: #dce9f7;
+}
+
+/* MARKET OVERVIEW */
+
+.overview {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+}
+
+.metric {
+    background: #101f32;
+    border: 1px solid #243e59;
+    border-radius: 8px;
+    padding: 15px;
+    min-height: 90px;
+}
+
+.metric-label {
+    color: #8fa6bd;
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.metric-value {
+    font-size: 21px;
+    font-weight: bold;
+    word-break: break-word;
+}
+
+/* STORY */
+
+.story {
+    background: #101f32;
+    border-left: 4px solid #4e9be8;
+    padding: 16px;
+    border-radius: 7px;
+    line-height: 1.6;
+    color: #dce9f7;
+}
+
+/* GRID */
+
+.grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+/* DATA GRID */
+
+.data-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.data-item {
+    background: #101f32;
+    border: 1px solid #243e59;
+    padding: 12px;
+    border-radius: 7px;
+}
+
+.data-label {
+    color: #8fa6bd;
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.data-value {
+    font-size: 17px;
+    font-weight: bold;
+}
+
+/* TABLE */
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    border-bottom: 1px solid #263e57;
+    padding: 11px 8px;
+    text-align: left;
+    font-size: 13px;
+}
+
+th {
+    color: #8fa6bd;
+    font-weight: normal;
+}
+
+td {
+    color: #e7f0f8;
+}
+
+/* TRADE LEVELS */
+
+.trade-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+.trade-item {
+    padding: 15px;
+    background: #101f32;
+    border: 1px solid #243e59;
+    border-radius: 7px;
+}
+
+.trade-label {
+    color: #8fa6bd;
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.trade-value {
+    font-size: 19px;
+    font-weight: bold;
+}
+
+/* FOOTER */
+
+.footer {
+    margin-top: 25px;
+    text-align: center;
+    color: #71869d;
+    font-size: 12px;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 1100px) {
+
+    .overview {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+}
+
+@media (max-width: 750px) {
+
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .overview {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .trade-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+}
+
+@media (max-width: 500px) {
+
+    .container {
+        width: 92%;
+    }
+
+    .overview {
+        grid-template-columns: 1fr;
+    }
+
+    .data-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .trade-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .title {
+        font-size: 22px;
+    }
+
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- HEADER -->
+
+    <div class="header">
+
+        <div>
+            <div class="title">
+                OPTION INTELLIGENCE ENGINE
+            </div>
+
+            <div class="subtitle">
+                Free Intraday Option Buyer Intelligence • NIFTY / BANK NIFTY
+            </div>
+        </div>
+
+        <div class="status" id="status">
+            ● CONNECTING...
+        </div>
+
+    </div>
+
+
+    <!-- INDEX SELECTOR -->
+
+    <div class="index-selector">
+
+        <button
+            class="index-btn active"
+            id="niftyBtn"
+            onclick="selectIndex('NIFTY', this)">
+            NIFTY 50
+        </button>
+
+        <button
+            class="index-btn"
+            id="bankBtn"
+            onclick="selectIndex('BANKNIFTY', this)">
+            BANK NIFTY
+        </button>
+
+    </div>
+
+
+    <!-- MARKET OVERVIEW -->
+
+    <div class="card">
+
+        <div class="card-title">
+            MARKET OVERVIEW
+        </div>
+
+        <div class="overview">
+
+            <div class="metric">
+                <div class="metric-label">UNDERLYING PRICE</div>
+                <div class="metric-value" id="price">--</div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">MARKET CONDITION</div>
+                <div class="metric-value" id="condition">--</div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">DECISION SCORE</div>
+                <div class="metric-value" id="score">--</div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">CONFIDENCE</div>
+                <div class="metric-value" id="confidence">--</div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">FINAL SIGNAL</div>
+                <div class="metric-value" id="signal">WAIT</div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">PRICE CHANGE</div>
+                <div class="metric-value" id="change">--</div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- MARKET STORY -->
+
+    <div class="card">
+
+        <div class="card-title">
+            LIVE MARKET STORY
+        </div>
+
+        <div class="story" id="story">
+            Waiting for live market data...
+        </div>
+
+    </div>
+
+
+    <!-- TECHNICAL + OPTION -->
+
+    <div class="grid">
+
+        <!-- TECHNICAL -->
+
+        <div class="card">
+
+            <div class="card-title">
+                TECHNICAL INTELLIGENCE
+            </div>
+
+            <div class="data-grid">
+
+                <div class="data-item">
+                    <div class="data-label">VWAP</div>
+                    <div class="data-value" id="vwap">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">VWAP POSITION</div>
+                    <div class="data-value" id="vwapStatus">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">EMA 9</div>
+                    <div class="data-value" id="ema9">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">EMA 21</div>
+                    <div class="data-value" id="ema21">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">RSI</div>
+                    <div class="data-value" id="rsi">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">ATR</div>
+                    <div class="data-value" id="atr">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">PRICE STRUCTURE</div>
+                    <div class="data-value" id="structure">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">VOLUME</div>
+                    <div class="data-value" id="volume">--</div>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- OPTION CHAIN -->
+
+        <div class="card">
+
+            <div class="card-title">
+                OPTION CHAIN INTELLIGENCE
+            </div>
+
+            <div class="data-grid">
+
+                <div class="data-item">
+                    <div class="data-label">PCR</div>
+                    <div class="data-value" id="pcr">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">IMPLIED VOLATILITY</div>
+                    <div class="data-value" id="iv">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">CALL OI</div>
+                    <div class="data-value" id="callOI">--</div>
+                </div>
+
+                <div class="data-item">
+                    <div class="data-label">PUT OI</div>
+                    <div class="data-value" id="putOI">--</div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- OI POSITIONING -->
+
+    <div class="card">
+
+        <div class="card-title">
+            OPEN INTEREST POSITIONING
+        </div>
+
+        <div class="table-wrap">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+                        <th>TYPE</th>
+                        <th>CALL OI</th>
+                        <th>CALL ΔOI</th>
+                        <th>PUT OI</th>
+                        <th>PUT ΔOI</th>
+                        <th>INTERPRETATION</th>
+                    </tr>
+
+                </thead>
+
+                <tbody id="oiTable">
+
+                    <tr>
+                        <td colspan="6">
+                            Waiting for live option-chain data...
+                        </td>
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+
+    <!-- SUPPORT RESISTANCE -->
+
+    <div class="card">
+
+        <div class="card-title">
+            SUPPORT / RESISTANCE
+        </div>
+
+        <div class="data-grid">
+
+            <div class="data-item">
+                <div class="data-label">RESISTANCE 1</div>
+                <div class="data-value" id="resistance">--</div>
+            </div>
+
+            <div class="data-item">
+                <div class="data-label">RESISTANCE 2</div>
+                <div class="data-value" id="resistance2">--</div>
+            </div>
+
+            <div class="data-item">
+                <div class="data-label">SUPPORT 1</div>
+                <div class="data-value" id="support">--</div>
+            </div>
+
+            <div class="data-item">
+                <div class="data-label">SUPPORT 2</div>
+                <div class="data-value" id="support2">--</div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- TRADE LEVELS -->
+
+    <div class="card">
+
+        <div class="card-title">
+            TRADE LEVELS
+        </div>
+
+        <div class="trade-grid">
+
+            <div class="trade-item">
+                <div class="trade-label">ENTRY</div>
+                <div class="trade-value" id="entry">--</div>
+            </div>
+
+            <div class="trade-item">
+                <div class="trade-label">STOP LOSS</div>
+                <div class="trade-value" id="stoploss">--</div>
+            </div>
+
+            <div class="trade-item">
+                <div class="trade-label">TARGET 1</div>
+                <div class="trade-value" id="target1">--</div>
+            </div>
+
+            <div class="trade-item">
+                <div class="trade-label">TARGET 2</div>
+                <div class="trade-value" id="target2">--</div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ENGINE STATUS -->
+
+    <div class="footer" id="footer">
+
+        Option Intelligence Engine • Free Edition • Connecting to live NSE data
+
+    </div>
+
+</div>
+
+
 <script>
 
 let currentIndex = "NIFTY";
 
 
+/* -----------------------------------------
+   INDEX SELECTION
+----------------------------------------- */
+
 function selectIndex(index, button) {
 
     currentIndex = index;
 
-    document.querySelectorAll(".index-btn")
-        .forEach(btn => btn.classList.remove("active"));
+    document
+        .querySelectorAll(".index-btn")
+        .forEach(function(btn) {
+            btn.classList.remove("active");
+        });
 
-    button.classList.add("active");
+    if (button) {
+        button.classList.add("active");
+    }
 
     loadMarketData();
+
 }
 
 
-function setValue(id, value, suffix = "") {
+/* -----------------------------------------
+   SAFE VALUE FUNCTION
+----------------------------------------- */
+
+function setValue(id, value) {
 
     const element = document.getElementById(id);
 
-    if (!element) return;
-
-    if (value === null || value === undefined || value === "") {
-        element.innerText = "--";
-    } else {
-        element.innerText = value + suffix;
+    if (!element) {
+        return;
     }
+
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+
+        element.innerText = "--";
+
+    } else {
+
+        element.innerText = value;
+
+    }
+
 }
 
 
+/* -----------------------------------------
+   NUMBER FORMAT
+----------------------------------------- */
+
 function formatNumber(value) {
 
-    if (value === null || value === undefined || value === "") {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
         return "--";
     }
 
@@ -42,71 +695,122 @@ function formatNumber(value) {
         return "--";
     }
 
-    return number.toLocaleString("en-IN", {
-        maximumFractionDigits: 2
-    });
+    return number.toLocaleString(
+        "en-IN",
+        {
+            maximumFractionDigits: 2
+        }
+    );
+
 }
 
 
+/* -----------------------------------------
+   LOAD MARKET DATA
+----------------------------------------- */
+
 async function loadMarketData() {
 
-    const status = document.getElementById("connectionStatus");
+    const status =
+        document.getElementById("status");
 
-    status.innerText = "● CONNECTING...";
+    if (status) {
+        status.innerText =
+            "● CONNECTING...";
+    }
+
 
     try {
 
         const response = await fetch(
-            "/api/market?symbol=" + encodeURIComponent(currentIndex),
+            "/api/market?symbol=" +
+            encodeURIComponent(currentIndex) +
+            "&_=" +
+            Date.now(),
             {
                 cache: "no-store"
             }
         );
 
+
         if (!response.ok) {
-            throw new Error("API error " + response.status);
+
+            throw new Error(
+                "API error: " +
+                response.status
+            );
+
         }
 
-        const data = await response.json();
+
+        const data =
+            await response.json();
+
 
         if (!data || data.ok !== true) {
-            throw new Error("Invalid API response");
+
+            throw new Error(
+                "Invalid API response"
+            );
+
         }
 
 
-        /* CONNECTION */
+        /* -----------------------------------------
+           CONNECTION
+        ----------------------------------------- */
 
-        status.innerText = "● ENGINE ONLINE";
+        if (status) {
+
+            status.innerText =
+                "● ENGINE ONLINE";
+
+        }
 
 
-        /* MARKET OVERVIEW */
+        /* -----------------------------------------
+           MARKET OVERVIEW
+        ----------------------------------------- */
 
-        setValue("price", formatNumber(data.price));
+        setValue(
+            "price",
+            formatNumber(data.price)
+        );
+
 
         setValue(
             "change",
-            data.change !== undefined && data.change !== null
+            data.change !== null &&
+            data.change !== undefined
                 ? data.change
                 : "0"
         );
 
+
         setValue(
             "condition",
-            data.market_condition || "WAIT"
+            data.market_condition ||
+            "WAIT"
         );
+
 
         setValue(
             "score",
-            (data.score ?? "--") + " / 100"
+            data.score !== null &&
+            data.score !== undefined
+                ? data.score + " / 100"
+                : "--"
         );
+
 
         setValue(
             "confidence",
-            (data.confidence ?? "--") + "%"
+            data.confidence !== null &&
+            data.confidence !== undefined
+                ? data.confidence + "%"
+                : "--"
         );
 
-
-        /* FINAL SIGNAL */
 
         setValue(
             "signal",
@@ -114,84 +818,58 @@ async function loadMarketData() {
         );
 
 
-        /* TRADE LEVELS */
-
-        setValue(
-            "entry",
-            data.entry > 0 ? formatNumber(data.entry) : "--"
-        );
-
-        setValue(
-            "stoploss",
-            data.stoploss > 0 ? formatNumber(data.stoploss) : "--"
-        );
-
-        setValue(
-            "target1",
-            data.target1 > 0 ? formatNumber(data.target1) : "--"
-        );
-
-        setValue(
-            "target2",
-            data.target2 > 0 ? formatNumber(data.target2) : "--"
-        );
-
-
-        /* MARKET STRUCTURE */
-
-        setValue(
-            "vwap",
-            data.vwap > 0 ? formatNumber(data.vwap) : "--"
-        );
-
-        setValue(
-            "ema9",
-            data.ema9 > 0 ? formatNumber(data.ema9) : "--"
-        );
-
-        setValue(
-            "ema21",
-            data.ema21 > 0 ? formatNumber(data.ema21) : "--"
-        );
-
-        setValue(
-            "rsi",
-            data.rsi > 0 ? Number(data.rsi).toFixed(2) : "--"
-        );
-
-
-        /* LIVE MARKET STORY */
+        /* -----------------------------------------
+           MARKET STORY
+        ----------------------------------------- */
 
         setValue(
             "story",
-            data.statement || "Waiting for live market data."
+            data.statement ||
+            "Waiting for live market data."
         );
 
 
-        /* TECHNICAL INTELLIGENCE */
+        /* -----------------------------------------
+           TECHNICAL INTELLIGENCE
+        ----------------------------------------- */
+
+        setValue(
+            "vwap",
+            data.vwap > 0
+                ? formatNumber(data.vwap)
+                : "--"
+        );
+
 
         setValue(
             "vwapStatus",
-            data.vwapStatus || "--"
+            data.vwapStatus ||
+            "--"
         );
+
 
         setValue(
-            "structure",
-            data.structure || "--"
+            "ema9",
+            data.ema9 > 0
+                ? formatNumber(data.ema9)
+                : "--"
         );
 
-        let volumeText = "--";
 
-        if (data.volume !== undefined && data.volume !== null) {
+        setValue(
+            "ema21",
+            data.ema21 > 0
+                ? formatNumber(data.ema21)
+                : "--"
+        );
 
-            volumeText = formatNumber(data.volume);
 
-            if (data.volumeState) {
-                volumeText += " (" + data.volumeState + ")";
-            }
-        }
-
-        setValue("volume", volumeText);
+        setValue(
+            "rsi",
+            data.rsi > 0
+                ? Number(data.rsi).toFixed(2)
+                : "--"
+        );
 
 
         setValue(
@@ -202,7 +880,46 @@ async function loadMarketData() {
         );
 
 
-        /* OPTION CHAIN INTELLIGENCE */
+        setValue(
+            "structure",
+            data.structure ||
+            "--"
+        );
+
+
+        let volumeText = "--";
+
+
+        if (
+            data.volume !== null &&
+            data.volume !== undefined
+        ) {
+
+            volumeText =
+                formatNumber(data.volume);
+
+
+            if (data.volumeState) {
+
+                volumeText +=
+                    " (" +
+                    data.volumeState +
+                    ")";
+
+            }
+
+        }
+
+
+        setValue(
+            "volume",
+            volumeText
+        );
+
+
+        /* -----------------------------------------
+           OPTION CHAIN
+        ----------------------------------------- */
 
         setValue(
             "pcr",
@@ -211,6 +928,7 @@ async function loadMarketData() {
                 : "--"
         );
 
+
         setValue(
             "callOI",
             data.callOI > 0
@@ -218,12 +936,14 @@ async function loadMarketData() {
                 : "--"
         );
 
+
         setValue(
             "putOI",
             data.putOI > 0
                 ? formatNumber(data.putOI)
                 : "--"
         );
+
 
         setValue(
             "iv",
@@ -233,32 +953,83 @@ async function loadMarketData() {
         );
 
 
-        /* SUPPORT / RESISTANCE */
+        /* -----------------------------------------
+           SUPPORT / RESISTANCE
+        ----------------------------------------- */
 
         setValue(
             "resistance",
-            data.resistance || "--"
+            data.resistance ||
+            "--"
         );
+
 
         setValue(
             "resistance2",
-            data.resistance2 || "--"
+            data.resistance2 ||
+            "--"
         );
+
 
         setValue(
             "support",
-            data.support || "--"
+            data.support ||
+            "--"
         );
+
 
         setValue(
             "support2",
-            data.support2 || "--"
+            data.support2 ||
+            "--"
         );
 
 
-        /* OI POSITIONING */
+        /* -----------------------------------------
+           TRADE LEVELS
+        ----------------------------------------- */
 
-        const oiTable = document.getElementById("oiTable");
+        setValue(
+            "entry",
+            data.entry > 0
+                ? formatNumber(data.entry)
+                : "--"
+        );
+
+
+        setValue(
+            "stoploss",
+            data.stoploss > 0
+                ? formatNumber(data.stoploss)
+                : "--"
+        );
+
+
+        setValue(
+            "target1",
+            data.target1 > 0
+                ? formatNumber(data.target1)
+                : "--"
+        );
+
+
+        setValue(
+            "target2",
+            data.target2 > 0
+                ? formatNumber(data.target2)
+                : "--"
+        );
+
+
+        /* -----------------------------------------
+           OI POSITIONING
+        ----------------------------------------- */
+
+        const oiTable =
+            document.getElementById(
+                "oiTable"
+            );
+
 
         if (oiTable) {
 
@@ -268,72 +1039,141 @@ async function loadMarketData() {
                     ? data.oi_positioning.call
                     : "N/A";
 
+
             const putPosition =
                 data.oi_positioning &&
                 data.oi_positioning.put
                     ? data.oi_positioning.put
                     : "N/A";
 
+
             const callChange =
                 data.oi_change &&
                 data.oi_change.call !== undefined
-                    ? formatNumber(data.oi_change.call)
+                    ? formatNumber(
+                        data.oi_change.call
+                    )
                     : "--";
+
 
             const putChange =
                 data.oi_change &&
                 data.oi_change.put !== undefined
-                    ? formatNumber(data.oi_change.put)
+                    ? formatNumber(
+                        data.oi_change.put
+                    )
                     : "--";
 
-            oiTable.innerHTML = `
-                <tr>
-                    <td>AGGREGATE</td>
-                    <td>${formatNumber(data.callOI)}</td>
-                    <td>${callChange}</td>
-                    <td>${formatNumber(data.putOI)}</td>
-                    <td>${putChange}</td>
-                    <td>CE: ${callPosition}<br>PE: ${putPosition}</td>
-                </tr>
-            `;
+
+            oiTable.innerHTML =
+
+                "<tr>" +
+
+                "<td>AGGREGATE</td>" +
+
+                "<td>" +
+                formatNumber(data.callOI) +
+                "</td>" +
+
+                "<td>" +
+                callChange +
+                "</td>" +
+
+                "<td>" +
+                formatNumber(data.putOI) +
+                "</td>" +
+
+                "<td>" +
+                putChange +
+                "</td>" +
+
+                "<td>" +
+                "CE: " +
+                callPosition +
+                "<br>" +
+                "PE: " +
+                putPosition +
+                "</td>" +
+
+                "</tr>";
+
         }
 
 
-        /* FOOTER STATUS */
+        /* -----------------------------------------
+           FOOTER
+        ----------------------------------------- */
 
-        const footer = document.querySelector(".footer");
+        const footer =
+            document.getElementById(
+                "footer"
+            );
+
 
         if (footer) {
 
             footer.innerText =
                 "Option Intelligence Engine • Free Edition • " +
-                (data.data_status || "Live data");
+                (
+                    data.data_status ||
+                    "Live NSE data"
+                );
+
         }
+
 
     }
 
     catch (error) {
 
-        console.error("Market data error:", error);
+        console.error(
+            "Market data error:",
+            error
+        );
 
-        status.innerText = "● API ERROR";
+
+        if (status) {
+
+            status.innerText =
+                "● API ERROR";
+
+        }
+
 
         setValue(
             "story",
             "Unable to read live market data. Retrying automatically..."
         );
+
     }
 
 }
 
 
-/* INITIAL LOAD */
+/* -----------------------------------------
+   INITIAL LOAD
+----------------------------------------- */
 
-loadMarketData();
+document.addEventListener(
+    "DOMContentLoaded",
+    function() {
+
+        loadMarketData();
+
+    }
+);
 
 
-/* REFRESH EVERY 10 SECONDS */
+/* -----------------------------------------
+   AUTO REFRESH
+----------------------------------------- */
 
-setInterval(loadMarketData, 10000);
+setInterval(
+    loadMarketData,
+    10000
+);
 
 </script>
+
+</body>
+</html>
