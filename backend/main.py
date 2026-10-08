@@ -319,7 +319,7 @@ def fetch_futures_candles(symbol):
         token = str(item.get("scripcode", "")).strip()
         if not token or not item_symbol:
             continue
-        if item_type == "" and item_symbol.endswith("FUT"):
+        if item_type == "futures" and item_symbol.endswith("FUT"):
             candidates.append(item)
 
     if not candidates:
