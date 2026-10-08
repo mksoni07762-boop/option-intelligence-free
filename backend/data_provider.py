@@ -54,21 +54,21 @@ class FreeOptionDataProvider:
 
         def _get_candles(self, symbol: str):
 
-        index_map = {
-            "NIFTY": {
-                "search": "NIFTY",
-                "symbol": "NIFTY 50"
-            },
-            "BANKNIFTY": {
-                "search": "NIFTY BANK",
-                "symbol": "NIFTY BANK"
+            index_map = {
+                "NIFTY": {
+                    "search": "NIFTY",
+                    "symbol": "NIFTY 50"
+                },
+                "BANKNIFTY": {
+                    "search": "NIFTY BANK",
+                    "symbol": "NIFTY BANK"
+                }
             }
-        }
-
-        info = index_map.get(symbol)
-
-        if not info:
-            return []
+    
+            info = index_map.get(symbol)
+    
+            if not info:
+                return []
 
         try:
             chart_session = requests.Session(
