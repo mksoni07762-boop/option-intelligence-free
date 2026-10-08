@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 
 from curl_cffi import requests
@@ -50,6 +50,142 @@ class FreeOptionDataProvider:
             ),
         })
 
+
+
+        def _get_candles(self, symbol: str):
+
+        index_map = {
+            "NIFTY": {
+                "search": "NIFTY",
+                "symbol": "NIFTY 50"
+            },
+            "BANKNIFTY": {
+                "search": "NIFTY BANK",
+                "symbol": "NIFTY BANK"
+            }
+        }
+
+        info = index_map.get(symbol)
+
+        if not info:
+            return []
+
+        try:
+            chart_session = requests.Session(
+                impersonate="chrome"
+            )
+
+            chart_session.headers.update({
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": "https://charting.nseindia.com",
+                "Referer": "https://charting.nseindia.com/"
+            })
+
+            chart_session.get(
+                "https://charting.nseindia.com",
+                timeout=10
+            )
+
+            search_url = (
+                "https://charting.nseindia.com/"
+                "v1/exchanges/symbolsDynamic"
+            )
+
+            search_response = chart_session.get(
+                search_url,
+                params={
+                    "symbol": info["search"],
+                    "segment": "IDX"
+                },
+                timeout=15
+            )
+
+            search_response.raise_for_status()
+
+            search_data = search_response.json()
+
+            matches = search_data.get("data", [])
+
+            token_info = None
+
+            for item in matches:
+                if str(
+                    item.get("symbol", "")
+                ).upper() == info["symbol"].upper():
+                    token_info = item
+                    break
+
+            if token_info is None and matches:
+                token_info = matches[0]
+
+            if token_info is None:
+                return []
+
+            end_time = int(time.time())
+            start_time = end_time - (3 * 24 * 60 * 60)
+
+            historical_url = (
+                "https://charting.nseindia.com/"
+                "v1/charts/symbolHistoricalData"
+            )
+
+            response = chart_session.get(
+                historical_url,
+                params={
+                    "token": str(
+                        token_info.get("scripcode")
+                    ),
+                    "fromDate": start_time,
+                    "toDate": end_time,
+                    "symbol": token_info.get("symbol"),
+                    "symbolType": token_info.get(
+                        "type",
+                        "Index"
+                    ),
+                    "chartType": "I",
+                    "timeInterval": 5
+                },
+                timeout=20
+            )
+
+            response.raise_for_status()
+
+            payload = response.json()
+
+            raw = payload.get("data", [])
+
+            candles = []
+
+            for candle in raw:
+
+                try:
+                    candles.append({
+                        "time": candle.get("time"),
+                        "open": float(
+                            candle.get("open", 0)
+                        ),
+                        "high": float(
+                            candle.get("high", 0)
+                        ),
+                        "low": float(
+                            candle.get("low", 0)
+                        ),
+                        "close": float(
+                            candle.get("close", 0)
+                        ),
+                        "volume": float(
+                            candle.get("volume", 0)
+                        )
+                    })
+
+                except Exception:
+                    continue
+
+            return candles
+
+        except Exception:
+            return []
     def _warm_session(self):
 
         try:
@@ -383,11 +519,11 @@ class FreeOptionDataProvider:
                     []
                 )
 
-            rows = []
+            522    rows = []
 
-            spot = self._safe_float(
-                records.get(
-                    "underlyingValue"
+   candles = self._get_candles(symbol)
+
+   spot = self._safe_float(
                 )
             )
 
@@ -515,12 +651,13 @@ class FreeOptionDataProvider:
             )
 
             result = {
-                "ok": True,
-                "symbol": symbol,
-                "spot": spot,
-                "expiry": expiry,
-                "rows": rows,
-                "max_pain": max_pain,
+    "ok": True,
+    "symbol": symbol,
+    "spot": spot,
+    "expiry": expiry,
+    "rows": rows,
+    "candles": candles,
+    "max_pain": max_pain,
                 "fetched_at": (
                     datetime.now().isoformat()
                 ),
