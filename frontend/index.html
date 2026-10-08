@@ -1,16 +1,622 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Option Intelligence Engine</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Option Intelligence Engine</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #07111f;
+    color: #f5f7fa;
+}
+
+.header {
+    padding: 18px 24px;
+    background: #0b1728;
+    border-bottom: 1px solid #24344d;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 24px;
+    letter-spacing: 1px;
+}
+
+.header p {
+    margin: 6px 0 0;
+    color: #9fb0c8;
+    font-size: 13px;
+}
+
+.container {
+    max-width: 1400px;
+    margin: auto;
+    padding: 18px;
+}
+
+.topbar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.index-btn {
+    border: 1px solid #344967;
+    background: #122139;
+    color: white;
+    padding: 10px 22px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.index-btn.active {
+    background: #1769aa;
+}
+
+.status {
+    margin-left: auto;
+    padding: 10px 15px;
+    border-radius: 7px;
+    background: #132238;
+    color: #7ee787;
+    font-size: 13px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+}
+
+.card {
+    background: #0d1a2c;
+    border: 1px solid #263a56;
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.card-title {
+    color: #8fa4bf;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 9px;
+}
+
+.big {
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.green {
+    color: #4ade80;
+}
+
+.red {
+    color: #ff5c6c;
+}
+
+.yellow {
+    color: #facc15;
+}
+
+.blue {
+    color: #60a5fa;
+}
+
+.section-title {
+    margin: 25px 0 12px;
+    font-size: 16px;
+    color: #dce7f5;
+}
+
+.decision {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: 14px;
+}
+
+.decision-main {
+    background: #101f34;
+    border: 1px solid #355477;
+    border-radius: 12px;
+    padding: 22px;
+    text-align: center;
+}
+
+.signal {
+    font-size: 34px;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+.score {
+    font-size: 42px;
+    font-weight: bold;
+}
+
+.story {
+    margin-top: 14px;
+    background: #101f34;
+    border-left: 4px solid #60a5fa;
+    border-radius: 8px;
+    padding: 16px;
+    color: #dce7f5;
+    line-height: 1.55;
+}
+
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+.metric {
+    background: #0a1627;
+    border: 1px solid #263a56;
+    padding: 13px;
+    border-radius: 8px;
+}
+
+.metric span {
+    display: block;
+}
+
+.metric .label {
+    color: #8095af;
+    font-size: 11px;
+    margin-bottom: 5px;
+}
+
+.metric .value {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.option-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #0d1a2c;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.option-table th,
+.option-table td {
+    padding: 11px;
+    border-bottom: 1px solid #24364e;
+    text-align: center;
+    font-size: 13px;
+}
+
+.option-table th {
+    background: #14253d;
+    color: #a9bdd5;
+}
+
+.option-table td {
+    color: #edf3fa;
+}
+
+.footer {
+    margin-top: 25px;
+    padding: 15px;
+    text-align: center;
+    color: #71849d;
+    font-size: 12px;
+}
+
+@media (max-width: 1000px) {
+    .grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .decision {
+        grid-template-columns: 1fr;
+    }
+
+    .metrics {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .status {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .header h1 {
+        font-size: 19px;
+    }
+}
+</style>
 </head>
 
 <body>
 
+<div class="header">
     <h1>OPTION INTELLIGENCE ENGINE</h1>
+    <p>Intraday Options Intelligence • OI + Price + Technical + Market Structure</p>
+</div>
 
-    <p>Website is under construction.</p>
+<div class="container">
+
+    <!-- INDEX SELECTOR -->
+    <div class="topbar">
+        <button class="index-btn active" onclick="selectIndex('NIFTY', this)">
+            NIFTY
+        </button>
+
+        <button class="index-btn" onclick="selectIndex('BANKNIFTY', this)">
+            BANK NIFTY
+        </button>
+
+        <div class="status" id="connectionStatus">
+            ● ENGINE ONLINE
+        </div>
+    </div>
+
+
+    <!-- MARKET OVERVIEW -->
+    <div class="grid">
+
+        <div class="card">
+            <div class="card-title">Underlying Price</div>
+            <div class="big" id="price">--</div>
+            <div id="change">Waiting for data</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Market Condition</div>
+            <div class="big yellow" id="condition">WAIT</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Decision Score</div>
+            <div class="big blue" id="score">-- / 100</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Confidence</div>
+            <div class="big" id="confidence">--%</div>
+        </div>
+
+    </div>
+
+
+    <!-- DECISION ENGINE -->
+    <div class="section-title">
+        TRADE DECISION ENGINE
+    </div>
+
+    <div class="decision">
+
+        <div class="decision-main">
+
+            <div class="card-title">
+                FINAL SIGNAL
+            </div>
+
+            <div class="signal yellow" id="signal">
+                WAIT
+            </div>
+
+            <div>
+                Option Buyer Bias
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <div class="card-title">
+                Trade Levels
+            </div>
+
+            <div class="metrics">
+
+                <div class="metric">
+                    <span class="label">ENTRY</span>
+                    <span class="value" id="entry">--</span>
+                </div>
+
+                <div class="metric">
+                    <span class="label">STOP LOSS</span>
+                    <span class="value red" id="stoploss">--</span>
+                </div>
+
+                <div class="metric">
+                    <span class="label">TARGET 1</span>
+                    <span class="value green" id="target1">--</span>
+                </div>
+
+                <div class="metric">
+                    <span class="label">TARGET 2</span>
+                    <span class="value green" id="target2">--</span>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <div class="card-title">
+                Market Structure
+            </div>
+
+            <div class="metrics">
+
+                <div class="metric">
+                    <span class="label">VWAP</span>
+                    <span class="value" id="vwap">--</span>
+                </div>
+
+                <div class="metric">
+                    <span class="label">EMA 9</span>
+                    <span class="value" id="ema9">--</span>
+                </div>
+
+                <div class="metric">
+                    <span class="label">EMA 21</span>
+                    <span class="value" id="ema21">--</span>
+                </div>
+
+                <div class="metric">
+                    <span class="label">RSI</span>
+                    <span class="value" id="rsi">--</span>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- MARKET STORY -->
+    <div class="section-title">
+        LIVE MARKET STORY
+    </div>
+
+    <div class="story" id="story">
+        Waiting for live market data. The engine will explain why the market
+        condition is changing.
+    </div>
+
+
+    <!-- TECHNICAL FACTORS -->
+    <div class="section-title">
+        TECHNICAL INTELLIGENCE
+    </div>
+
+    <div class="grid">
+
+        <div class="card">
+            <div class="card-title">VWAP Position</div>
+            <div class="big" id="vwapStatus">--</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Price Structure</div>
+            <div class="big" id="structure">--</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Volume</div>
+            <div class="big" id="volume">--</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">ATR</div>
+            <div class="big" id="atr">--</div>
+        </div>
+
+    </div>
+
+
+    <!-- OPTION INTELLIGENCE -->
+    <div class="section-title">
+        OPTION CHAIN INTELLIGENCE
+    </div>
+
+    <div class="grid">
+
+        <div class="card">
+            <div class="card-title">PCR</div>
+            <div class="big blue" id="pcr">--</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Call OI</div>
+            <div class="big" id="callOI">--</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Put OI</div>
+            <div class="big" id="putOI">--</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">India VIX</div>
+            <div class="big" id="iv">--</div>
+        </div>
+
+    </div>
+
+
+    <!-- OI TABLE -->
+    <div class="section-title">
+        OI POSITIONING
+    </div>
+
+    <table class="option-table">
+
+        <thead>
+            <tr>
+                <th>Strike</th>
+                <th>CE OI</th>
+                <th>CE ΔOI</th>
+                <th>PE OI</th>
+                <th>PE ΔOI</th>
+                <th>Interpretation</th>
+            </tr>
+        </thead>
+
+        <tbody id="oiTable">
+
+            <tr>
+                <td colspan="6">
+                    Waiting for live option-chain data...
+                </td>
+            </tr>
+
+        </tbody>
+
+    </table>
+
+
+    <!-- SUPPORT RESISTANCE -->
+    <div class="section-title">
+        SUPPORT / RESISTANCE
+    </div>
+
+    <div class="grid">
+
+        <div class="card">
+            <div class="card-title">Major Resistance</div>
+            <div class="big red" id="resistance">--</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Immediate Resistance</div>
+            <div class="big red" id="resistance2">--</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Immediate Support</div>
+            <div class="big green" id="support">--</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Major Support</div>
+            <div class="big green" id="support2">--</div>
+        </div>
+
+    </div>
+
+
+    <div class="footer">
+        Option Intelligence Engine • Free Edition • Data connector will be added next
+    </div>
+
+</div>
+
+
+<script>
+
+let currentIndex = "NIFTY";
+
+
+function selectIndex(index, button) {
+
+    currentIndex = index;
+
+    document.querySelectorAll(".index-btn")
+        .forEach(btn => btn.classList.remove("active"));
+
+    button.classList.add("active");
+
+    loadMarketData();
+}
+
+
+async function loadMarketData() {
+
+    const status = document.getElementById("connectionStatus");
+
+    status.innerText = "● CONNECTING...";
+
+    try {
+
+        const response = await fetch("/api/market");
+
+        if (!response.ok) {
+            throw new Error("API error");
+        }
+
+        const data = await response.json();
+
+        status.innerText = "● ENGINE ONLINE";
+
+        document.getElementById("price").innerText =
+            data.price ?? "--";
+
+        document.getElementById("condition").innerText =
+            data.market_condition ?? "WAIT";
+
+        document.getElementById("score").innerText =
+            (data.score ?? "--") + " / 100";
+
+        document.getElementById("confidence").innerText =
+            (data.confidence ?? "--") + "%";
+
+        document.getElementById("signal").innerText =
+            data.signal ?? "WAIT";
+
+        document.getElementById("story").innerText =
+            data.statement ??
+            "Waiting for live market data.";
+
+        document.getElementById("change").innerText =
+            data.change ?? "No price data";
+
+    }
+
+    catch (error) {
+
+        status.innerText = "● API WAITING";
+
+        document.getElementById("story").innerText =
+            "Market data connector is not configured yet.";
+
+    }
+
+}
+
+
+/*
+   Refresh every 10 seconds.
+   At this stage the backend returns placeholder data.
+   Later this will receive live market + option-chain data.
+*/
+
+loadMarketData();
+
+setInterval(loadMarketData, 10000);
+
+</script>
 
 </body>
 </html>
