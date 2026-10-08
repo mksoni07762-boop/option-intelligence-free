@@ -373,9 +373,9 @@ def fetch_futures_candles(symbol):
     }
 
     try:
-        response = s.post(
+        response = s.get(
     CHART + "/v1/charts/symbolHistoricalData",
-    json=payload,
+    params=payload,
     timeout=20,
 )
         response.raise_for_status()
