@@ -1,17 +1,21 @@
 from typing import Dict, Any
 from datetime import datetime
 import time
-import requests
+
+from curl_cffi import requests
 
 
 class FreeOptionDataProvider:
     """
     Free NSE option-chain connector.
 
-    Uses NSE's publicly accessible option-chain endpoint.
-    No Groww API or paid market-data API is required.
+    Flow:
+        NSE session
+          -> contract-info
+          -> nearest expiry
+          -> option-chain-v3
 
-    Data is indicative and should be verified before trading.
+    No Groww API or paid market-data API is required.
     """
 
     BASE_URL = "https://www.nseindia.com"
@@ -19,74 +23,153 @@ class FreeOptionDataProvider:
     def __init__(self):
         self.session = None
         self.last_data = {}
-        self.last_fetch = 0
+        self.last_fetch = {}
         self.cache_seconds = 15
 
         self._create_session()
 
     def _create_session(self):
-        self.session = requests.Session()
+
+        self.session = requests.Session(
+            impersonate="chrome"
+        )
 
         self.session.headers.update({
-            "User-Agent": (
+            "accept": (
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,image/avif,"
+                "image/webp,*/*;q=0.8"
+            ),
+            "accept-language": "en-US,en;q=0.9",
+            "cache-control": "no-cache",
+            "pragma": "no-cache",
+            "user-agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/154.0.0.0 Safari/537.36"
             ),
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.nseindia.com/option-chain",
-            "Connection": "keep-alive"
         })
 
-    def _initialize_nse_session(self):
-        """
-        Open NSE pages first so the session receives
-        the cookies required by the API.
-        """
+    def _warm_session(self):
 
         try:
+
             self.session.get(
                 self.BASE_URL,
-                timeout=10
+                timeout=15
             )
 
             self.session.get(
                 self.BASE_URL + "/option-chain",
-                timeout=10
+                timeout=15
+            )
+
+            # Additional lightweight NSE endpoint used
+            # to establish a normal API session.
+            self.session.get(
+                self.BASE_URL + "/api/allIndices",
+                timeout=15
             )
 
             return True
 
         except Exception:
+
             return False
 
-    def _fetch_chain(self, symbol: str):
+    def _get_contract_info(self, symbol):
 
-        api_url = (
+        url = (
             self.BASE_URL
-            + "/api/option-chain-indices?symbol="
-            + symbol
+            + "/api/option-chain-contract-info"
         )
 
-        # First establish NSE session/cookies.
-        self._initialize_nse_session()
-
         response = self.session.get(
-            api_url,
+            url,
+            params={"symbol": symbol},
+            headers={
+                "accept": "application/json, text/plain, */*",
+                "referer": (
+                    self.BASE_URL
+                    + "/option-chain"
+                )
+            },
             timeout=15
         )
 
-        # If NSE rejects the session, create a fresh one
-        # and retry once.
-        if response.status_code in (401, 403):
+        if response.status_code in (401, 403, 404):
 
             self._create_session()
-            self._initialize_nse_session()
+            self._warm_session()
 
             response = self.session.get(
-                api_url,
+                url,
+                params={"symbol": symbol},
+                headers={
+                    "accept": (
+                        "application/json, "
+                        "text/plain, */*"
+                    ),
+                    "referer": (
+                        self.BASE_URL
+                        + "/option-chain"
+                    )
+                },
                 timeout=15
+            )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    def _get_option_chain(self, symbol, expiry):
+
+        url = (
+            self.BASE_URL
+            + "/api/option-chain-v3"
+        )
+
+        params = {
+            "type": "Indices",
+            "symbol": symbol,
+            "expiry": expiry
+        }
+
+        response = self.session.get(
+            url,
+            params=params,
+            headers={
+                "accept": (
+                    "application/json, "
+                    "text/plain, */*"
+                ),
+                "referer": (
+                    self.BASE_URL
+                    + "/option-chain"
+                )
+            },
+            timeout=20
+        )
+
+        if response.status_code in (401, 403, 404):
+
+            self._create_session()
+            self._warm_session()
+
+            response = self.session.get(
+                url,
+                params=params,
+                headers={
+                    "accept": (
+                        "application/json, "
+                        "text/plain, */*"
+                    ),
+                    "referer": (
+                        self.BASE_URL
+                        + "/option-chain"
+                    )
+                },
+                timeout=20
             )
 
         response.raise_for_status()
@@ -97,37 +180,65 @@ class FreeOptionDataProvider:
     def _safe_float(value, default=0.0):
 
         try:
+
             if value is None:
                 return default
 
             return float(value)
 
         except Exception:
+
             return default
 
     @staticmethod
     def _safe_int(value, default=0):
 
         try:
+
             if value is None:
                 return default
 
             return int(float(value))
 
         except Exception:
+
             return default
+
+    @staticmethod
+    def _expiry_matches(value, expiry):
+
+        if value is None:
+            return False
+
+        if isinstance(value, list):
+
+            return any(
+                str(x).strip().lower()
+                == str(expiry).strip().lower()
+                for x in value
+            )
+
+        return (
+            str(value).strip().lower()
+            == str(expiry).strip().lower()
+        )
 
     def _calculate_max_pain(self, rows):
 
         if not rows:
             return 0.0
 
-        strikes = [
-            self._safe_float(row.get("strike"))
-            for row in rows
-        ]
-
-        strikes = [x for x in strikes if x > 0]
+        strikes = sorted(
+            {
+                self._safe_float(
+                    row.get("strike")
+                )
+                for row in rows
+                if self._safe_float(
+                    row.get("strike")
+                ) > 0
+            }
+        )
 
         if not strikes:
             return 0.0
@@ -153,14 +264,14 @@ class FreeOptionDataProvider:
                     row.get("pe", {}).get("oi")
                 )
 
-                # Call writer loss
                 if settlement > strike:
+
                     total_pain += (
                         settlement - strike
                     ) * ce_oi
 
-                # Put writer loss
                 if settlement < strike:
+
                     total_pain += (
                         strike - settlement
                     ) * pe_oi
@@ -169,6 +280,7 @@ class FreeOptionDataProvider:
                 lowest_pain is None
                 or total_pain < lowest_pain
             ):
+
                 lowest_pain = total_pain
                 best_strike = settlement
 
@@ -185,20 +297,67 @@ class FreeOptionDataProvider:
             "NIFTY",
             "BANKNIFTY"
         ):
+
             symbol = "NIFTY"
 
         now = time.time()
 
-        # Use short cache to avoid unnecessary NSE requests.
+        # Short cache prevents excessive NSE requests.
         if (
             symbol in self.last_data
-            and now - self.last_fetch < self.cache_seconds
+            and now - self.last_fetch.get(
+                symbol,
+                0
+            ) < self.cache_seconds
         ):
+
             return self.last_data[symbol]
 
         try:
 
-            payload = self._fetch_chain(symbol)
+            # Create fresh browser-like session.
+            self._create_session()
+
+            # Establish NSE cookies/session.
+            if not self._warm_session():
+
+                raise RuntimeError(
+                    "Unable to initialize NSE session"
+                )
+
+            # -------------------------------------------------
+            # STEP 1: Get available expiry dates
+            # -------------------------------------------------
+
+            contract_info = (
+                self._get_contract_info(symbol)
+            )
+
+            expiry_dates = (
+                contract_info.get(
+                    "expiryDates",
+                    []
+                )
+            )
+
+            if not expiry_dates:
+
+                raise RuntimeError(
+                    "NSE returned no expiry dates"
+                )
+
+            expiry = str(
+                expiry_dates[0]
+            )
+
+            # -------------------------------------------------
+            # STEP 2: Get current option chain
+            # -------------------------------------------------
+
+            payload = self._get_option_chain(
+                symbol,
+                expiry
+            )
 
             records = payload.get(
                 "records",
@@ -210,31 +369,75 @@ class FreeOptionDataProvider:
                 []
             )
 
-            spot = self._safe_float(
-                records.get("underlyingValue")
-            )
+            if not raw_rows:
 
-            expiry_dates = records.get(
-                "expiryDates",
-                []
-            )
+                # Some NSE responses may place the
+                # usable rows under filtered.data.
+                filtered = payload.get(
+                    "filtered",
+                    {}
+                )
 
-            expiry = (
-                expiry_dates[0]
-                if expiry_dates
-                else ""
-            )
+                raw_rows = filtered.get(
+                    "data",
+                    []
+                )
 
             rows = []
 
+            spot = self._safe_float(
+                records.get(
+                    "underlyingValue"
+                )
+            )
+
+            # -------------------------------------------------
+            # STEP 3: Convert NSE rows to our standard format
+            # -------------------------------------------------
+
             for item in raw_rows:
+
+                item_expiry = item.get(
+                    "expiryDates"
+                )
+
+                # v3 may return several expiries.
+                if (
+                    item_expiry is not None
+                    and not self._expiry_matches(
+                        item_expiry,
+                        expiry
+                    )
+                ):
+
+                    continue
 
                 strike = self._safe_float(
                     item.get("strikePrice")
                 )
 
+                if strike <= 0:
+                    continue
+
                 ce = item.get("CE") or {}
                 pe = item.get("PE") or {}
+
+                # Underlying value is sometimes present
+                # inside CE/PE rather than records.
+                if spot <= 0:
+
+                    spot = max(
+                        self._safe_float(
+                            ce.get(
+                                "underlyingValue"
+                            )
+                        ),
+                        self._safe_float(
+                            pe.get(
+                                "underlyingValue"
+                            )
+                        )
+                    )
 
                 rows.append({
                     "strike": strike,
@@ -296,14 +499,19 @@ class FreeOptionDataProvider:
                     }
                 })
 
-            # Keep only useful rows.
-            rows = [
-                row for row in rows
-                if row["strike"] > 0
-            ]
+            rows.sort(
+                key=lambda x: x["strike"]
+            )
 
-            max_pain = self._calculate_max_pain(
-                rows
+            if not rows:
+
+                raise RuntimeError(
+                    "NSE returned no option-chain rows "
+                    "for the nearest expiry"
+                )
+
+            max_pain = (
+                self._calculate_max_pain(rows)
             )
 
             result = {
@@ -313,19 +521,23 @@ class FreeOptionDataProvider:
                 "expiry": expiry,
                 "rows": rows,
                 "max_pain": max_pain,
-                "fetched_at": datetime.now().isoformat(),
-                "source": "NSE PUBLIC OPTION CHAIN"
+                "fetched_at": (
+                    datetime.now().isoformat()
+                ),
+                "source": (
+                    "NSE PUBLIC OPTION CHAIN V3"
+                )
             }
 
             self.last_data[symbol] = result
-            self.last_fetch = now
+            self.last_fetch[symbol] = now
 
             return result
 
         except Exception as error:
 
-            # If fresh data fails but cached data exists,
-            # return the last successful data.
+            # Keep last good data available if NSE
+            # temporarily challenges the connection.
             if symbol in self.last_data:
 
                 cached = dict(
@@ -341,8 +553,12 @@ class FreeOptionDataProvider:
                 "ok": False,
                 "symbol": symbol,
                 "error": str(error),
-                "fetched_at": datetime.now().isoformat(),
-                "source": "NSE PUBLIC OPTION CHAIN"
+                "fetched_at": (
+                    datetime.now().isoformat()
+                ),
+                "source": (
+                    "NSE PUBLIC OPTION CHAIN V3"
+                )
             }
 
 
