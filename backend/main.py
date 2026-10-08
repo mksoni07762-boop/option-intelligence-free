@@ -716,21 +716,22 @@ def market(symbol: str = "NIFTY"):
     # ========================================================
     # EXTRACT LIVE CHAIN
     # ========================================================
+    
+    rows = live.get("rows", [])
 
-   rows = live.get("rows", [])
+    spot = safe_float(live.get("spot"))
 
-spot = safe_float(live.get("spot"))
+    candles = live.get("candles", [])
 
-candles = live.get("candles", [])
-technical = calculate_candle_indicators(candles)
-total_call_oi = 0
-total_put_oi = 0
+    technical = calculate_candle_indicators(candles)
 
-total_call_change_oi = 0
-total_put_change_oi = 0
+    total_call_oi = 0
+    total_put_oi = 0
 
-iv_values = []
+    total_call_change_oi = 0
+    total_put_change_oi = 0
 
+    iv_values = []
 for row in rows:
         ce = row.get("ce", {})
         pe = row.get("pe", {})
