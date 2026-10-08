@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
-
+from .data_provider import get_market_data
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -478,18 +478,171 @@ def market(symbol: str = "NIFTY"):
     if symbol not in ["NIFTY", "BANKNIFTY"]:
         symbol = "NIFTY"
 
+    # ========================================================
+    # LIVE FREE OPTION-CHAIN DATA
+    # ========================================================
+
+    live = get_market_data(symbol)
+
     # --------------------------------------------------------
-    # IMPORTANT:
-    # These are NOT live values.
-    # They are only a neutral data structure used to test
-    # the intelligence engine until the free data connector
-    # is connected.
+    # If the free provider is unavailable
     # --------------------------------------------------------
+
+    if not live.get("ok"):
+
+        return {
+            "symbol": symbol,
+
+            "price": 0,
+            "change": 0,
+
+            "market_condition": "WAIT",
+            "score": 0,
+            "confidence": 0,
+            "signal": "WAIT",
+
+            "statement": (
+                "Live option-chain data is currently unavailable. "
+                "No trading signal is generated."
+            ),
+
+            "vwap": 0,
+            "ema9": 0,
+            "ema21": 0,
+            "rsi": 50,
+            "atr": 0,
+            "volume": 0,
+
+            "pcr": 0,
+            "callOI": 0,
+            "putOI": 0,
+            "iv": 0,
+
+            "vwapStatus": "WAITING",
+            "structure": "WAITING",
+
+            "resistance": "--",
+            "resistance2": "--",
+            "support": "--",
+            "support2": "--",
+
+            "entry": "--",
+            "stoploss": "--",
+            "target1": "--",
+            "target2": "--",
+
+            "data_status": (
+                "FREE OPTION CHAIN CONNECTOR ERROR: "
+                + str(live.get("error", "Unknown error"))
+            ),
+
+            "engine": {
+                "technical_score": 0,
+                "oi_score": 0,
+                "pcr_score": 0,
+                "reasons": []
+            },
+
+            "time": datetime.now().isoformat()
+        }
+
+    # ========================================================
+    # EXTRACT LIVE CHAIN
+    # ========================================================
+
+    rows = live.get("rows", [])
+
+    spot = safe_float(live.get("spot"))
+
+    total_call_oi = 0
+    total_put_oi = 0
+
+    total_call_change_oi = 0
+    total_put_change_oi = 0
+
+    iv_values = []
+
+    for row in rows:
+
+        ce = row.get("ce", {})
+        pe = row.get("pe", {})
+
+        total_call_oi += int(
+            safe_float(ce.get("oi"))
+        )
+
+        total_put_oi += int(
+            safe_float(pe.get("oi"))
+        )
+
+        total_call_change_oi += int(
+            safe_float(ce.get("change_oi"))
+        )
+
+        total_put_change_oi += int(
+            safe_float(pe.get("change_oi"))
+        )
+
+        ce_iv = safe_float(ce.get("iv"))
+        pe_iv = safe_float(pe.get("iv"))
+
+        if ce_iv > 0:
+            iv_values.append(ce_iv)
+
+        if pe_iv > 0:
+            iv_values.append(pe_iv)
+
+    # ========================================================
+    # PCR
+    # ========================================================
+
+    pcr = calculate_pcr(
+        total_put_oi,
+        total_call_oi
+    )
+
+    # ========================================================
+    # BASIC OI POSITIONING
+    # ========================================================
+
+    if total_call_change_oi > 0:
+        ce_position = "CALL WRITING"
+    elif total_call_change_oi < 0:
+        ce_position = "CALL UNWINDING"
+    else:
+        ce_position = "NEUTRAL"
+
+    if total_put_change_oi > 0:
+        pe_position = "PUT WRITING"
+    elif total_put_change_oi < 0:
+        pe_position = "PUT UNWINDING"
+    else:
+        pe_position = "NEUTRAL"
+
+    # ========================================================
+    # AVERAGE IV
+    # ========================================================
+
+    if iv_values:
+        average_iv = round(
+            sum(iv_values) / len(iv_values),
+            2
+        )
+    else:
+        average_iv = 0
+
+    # ========================================================
+    # TEMPORARY TECHNICAL VALUES
+    #
+    # These will be connected to actual candle data next.
+    # We deliberately DO NOT create fake VWAP/EMA/RSI values.
+    # ========================================================
 
     data = {
+
         "symbol": symbol,
 
-        "price": 0,
+        "price": spot,
         "change": 0,
 
         "vwap": 0,
@@ -501,46 +654,78 @@ def market(symbol: str = "NIFTY"):
         "volume": 0,
         "volume_ratio": 1,
 
-        "structure": "NEUTRAL",
+        "structure": "WAITING",
 
-        "call_oi": 0,
-        "put_oi": 0,
+        "call_oi": total_call_oi,
+        "put_oi": total_put_oi,
 
-        "ce_position": "NEUTRAL",
-        "pe_position": "NEUTRAL",
+        "ce_position": ce_position,
+        "pe_position": pe_position,
 
-        "iv": 0
+        "iv": average_iv
     }
+
+    # ========================================================
+    # INTELLIGENCE ENGINE
+    # ========================================================
 
     result = decision_engine(data)
 
+    # ========================================================
+    # IMPORTANT SAFETY FILTER
+    #
+    # Until candle/VWAP/EMA data is connected, do not allow
+    # the option-chain alone to generate an aggressive trade.
+    # ========================================================
+
+    signal = "WAIT"
+
+    confidence = min(
+        result["confidence"],
+        55
+    )
+
+    condition = result["market_condition"]
+
+    statement = (
+        "Live option-chain data received. "
+        "Technical candle confirmation is still being connected. "
+        "Therefore the engine is observing OI/PCR conditions "
+        "but will not generate a CALL/PUT entry yet."
+    )
+
+    # ========================================================
+    # RESPONSE
+    # ========================================================
+
     return {
+
         "symbol": symbol,
 
-        "price": data["price"],
-        "change": data["change"],
+        "price": spot,
+        "change": 0,
 
-        "market_condition": result["market_condition"],
+        "market_condition": condition,
         "score": result["score"],
-        "confidence": result["confidence"],
-        "signal": result["signal"],
+        "confidence": confidence,
+        "signal": signal,
 
-        "statement": result["statement"],
+        "statement": statement,
 
-        "vwap": data["vwap"],
-        "ema9": data["ema9"],
-        "ema21": data["ema21"],
-        "rsi": data["rsi"],
-        "atr": data["atr"],
-        "volume": data["volume"],
+        "vwap": 0,
+        "ema9": 0,
+        "ema21": 0,
+        "rsi": 50,
+        "atr": 0,
+        "volume": 0,
 
-        "pcr": result["pcr"],
-        "callOI": data["call_oi"],
-        "putOI": data["put_oi"],
-        "iv": data["iv"],
+        "pcr": pcr,
+        "callOI": total_call_oi,
+        "putOI": total_put_oi,
+        "iv": average_iv,
 
-        "vwapStatus": "WAITING",
-        "structure": data["structure"],
+        "vwapStatus": "WAITING FOR CANDLE DATA",
+        "structure": "WAITING FOR CANDLE DATA",
 
         "resistance": "--",
         "resistance2": "--",
@@ -552,7 +737,23 @@ def market(symbol: str = "NIFTY"):
         "target1": "--",
         "target2": "--",
 
-        "data_status": "ENGINE READY - LIVE CONNECTOR NOT CONFIGURED",
+        "data_status": (
+            "LIVE FREE OPTION CHAIN CONNECTED "
+            "(INDICATIVE SOURCE)"
+        ),
+
+        "expiry": live.get("expiry"),
+        "max_pain": live.get("max_pain"),
+
+        "oi_change": {
+            "call": total_call_change_oi,
+            "put": total_put_change_oi
+        },
+
+        "oi_positioning": {
+            "call": ce_position,
+            "put": pe_position
+        },
 
         "engine": {
             "technical_score": result["technical_score"],
