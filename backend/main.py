@@ -277,11 +277,14 @@ def fetch_candles(symbol):
     candles.sort(key=lambda x: safe_float(x["time"]))
     return candles[-500:]
 
+
 def fetch_futures_candles(symbol):
     """
-    Fetch 5-minute NSE futures candles.
-    Futures provide usable volume for VWAP/volume analysis,
-    while index candles remain the source for price indicators.
+    Fetch 5-minute NSE index-futures candles for volume/VWAP.
+
+    Index candles remain the source for EMA, RSI, ATR and price structure.
+    Futures are used only where traded volume is required because NSE index
+    candles can expose zero/empty volume.
     """
     s = session()
     warm_nse(s)
@@ -292,10 +295,7 @@ def fetch_futures_candles(symbol):
     try:
         response = s.get(
             CHART + "/v1/exchanges/symbolsDynamic",
-            params={
-                "symbol": search_symbol,
-                "segment": "FO",
-            },
+            params={"symbol": search_symbol, "segment": "FO"},
             timeout=15,
         )
         response.raise_for_status()
@@ -304,36 +304,67 @@ def fetch_futures_candles(symbol):
         return []
 
     items = result.get("data", []) if isinstance(result, dict) else []
-
-    futures = [
-        x for x in items
-        if isinstance(x, dict)
-        and str(x.get("type", "")).lower() == "futures"
-        and str(x.get("symbol", "")).upper().endswith("FUT")
-    ]
-
-    if not futures:
+    if not isinstance(items, list):
         return []
 
-    # Prefer the first NSE futures contract returned.
-    # NSE's search endpoint normally ranks the relevant contracts first.
-    info = futures[0]
+    candidates = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_type = str(item.get("type", "")).strip().lower()
+        item_symbol = str(item.get("symbol", "")).strip().upper()
+        token = str(item.get("scripcode", "")).strip()
+        if not token or not item_symbol:
+            continue
+        if item_type == "futures" and item_symbol.endswith("FUT"):
+            candidates.append(item)
 
-    token = str(info.get("scripcode", ""))
-    chart_symbol = str(info.get("symbol", ""))
+    if not candidates:
+        return []
+
+    # Prefer the nearest-expiry contract if the search response exposes
+    # expiry metadata; otherwise retain the API's first futures contract.
+    today = datetime.now(timezone.utc).date()
+
+    def expiry_date(item):
+        for key in ("expiry", "expiryDate", "expiry_date", "contractExpiry"):
+            value = item.get(key)
+            if not value:
+                continue
+            text = str(value).strip()
+            for fmt in (
+                "%d-%b-%Y", "%d-%B-%Y", "%Y-%m-%d",
+                "%d-%b-%y", "%d-%B-%y",
+            ):
+                try:
+                    return datetime.strptime(text, fmt).date()
+                except ValueError:
+                    pass
+        return None
+
+    dated = [(expiry_date(item), item) for item in candidates]
+    future_dated = [pair for pair in dated if pair[0] is not None and pair[0] >= today]
+    if future_dated:
+        future_dated.sort(key=lambda pair: pair[0])
+        info = future_dated[0][1]
+    else:
+        info = candidates[0]
+
+    token = str(info.get("scripcode", "")).strip()
+    chart_symbol = str(info.get("symbol", "")).strip()
+    symbol_type = str(info.get("type", "Futures")).strip() or "Futures"
 
     if not token or not chart_symbol:
         return []
 
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=7)
-
     payload = {
         "token": token,
         "fromDate": int(start.timestamp()),
         "toDate": int(end.timestamp()),
         "symbol": chart_symbol,
-        "symbolType": str(info.get("type", "Futures")),
+        "symbolType": symbol_type,
         "chartType": "I",
         "timeInterval": 5,
     }
@@ -349,11 +380,10 @@ def fetch_futures_candles(symbol):
     except Exception:
         return []
 
-    if not result.get("status") or not result.get("data"):
+    if not isinstance(result, dict) or not result.get("status") or not result.get("data"):
         return []
 
     candles = []
-
     for item in result.get("data", []):
         if not isinstance(item, dict):
             continue
@@ -380,6 +410,8 @@ def fetch_futures_candles(symbol):
 
     candles.sort(key=lambda x: safe_float(x["time"]))
     return candles[-500:]
+
+
 def fetch_option_chain(symbol):
     s = session()
     warm_nse(s)
@@ -577,7 +609,7 @@ def nearest_oi_levels(rows, spot):
     )
 
 
-def technical_analysis(candles, spot):
+def technical_analysis(candles, spot, futures_candles=None):
     closes = [
         safe_float(c.get("close"))
         for c in candles
@@ -597,17 +629,18 @@ def technical_analysis(candles, spot):
             "score": 0,
             "reasons": ["5-minute candle data unavailable"],
         }
-    
-        futures_candles = fetch_futures_candles(symbol)
+
     ema9 = ema_series(closes, 9)[-1]
     ema21 = ema_series(closes, 21)[-1]
-        vwap_source = futures_candles if futures_candles else candles
-    vwap = vwap_value(vwap_source)
+
+    # Use index candles for price indicators. Use futures candles for
+    # VWAP/volume when available because index volume can be zero.
+    volume_source = futures_candles if futures_candles else candles
+    vwap = vwap_value(volume_source)
     rsi = rsi_value(closes, 14)
     atr = atr_value(candles, 14)
-    volume_source = futures_candles if futures_candles else candles
     volume = safe_float(volume_source[-1].get("volume")) if volume_source else 0.0
-    vstate = volume_state(candles)
+    vstate = volume_state(volume_source)
     structure = market_structure(candles)
 
     price = spot if spot > 0 else closes[-1]
@@ -879,9 +912,15 @@ def get_market_data(symbol):
 
     chain = fetch_option_chain(nse_symbol)
     candles = fetch_candles(symbol)
+    futures_candles = fetch_futures_candles(symbol)
 
     if not chain["rows"] and chain["spot"] <= 0:
-        return {"ok": False, "candles": candles, "expiry": chain["expiry"]}
+        return {
+            "ok": False,
+            "candles": candles,
+            "futures_candles": futures_candles,
+            "expiry": chain["expiry"],
+        }
 
     return {
         "ok": True,
@@ -889,6 +928,7 @@ def get_market_data(symbol):
         "spot": chain["spot"],
         "expiry": chain["expiry"],
         "candles": candles,
+        "futures_candles": futures_candles,
         "max_pain": max_pain_value(chain["rows"]),
     }
 
@@ -955,9 +995,10 @@ def market(symbol: str = "NIFTY"):
 
     rows = live.get("rows", [])
     candles = live.get("candles", [])
+    futures_candles = live.get("futures_candles", [])
     spot = safe_float(live.get("spot"))
 
-    technical = technical_analysis(candles, spot)
+    technical = technical_analysis(candles, spot, futures_candles)
     technical_ready = (
         len(candles) >= 21
         and technical["ema9"] > 0
@@ -1046,7 +1087,9 @@ def market(symbol: str = "NIFTY"):
             "put": oi["put_position"],
         },
         "data_status": (
-            "LIVE NSE OPTION CHAIN + LIVE 5-MIN CANDLES"
+            "LIVE NSE OPTION CHAIN + LIVE 5-MIN CANDLES + FUTURES VOLUME"
+            if technical_ready and futures_candles
+            else "LIVE NSE OPTION CHAIN + LIVE 5-MIN CANDLES; FUTURES VOLUME UNAVAILABLE"
             if technical_ready
             else "LIVE NSE OPTION CHAIN; CANDLE DATA TEMPORARILY UNAVAILABLE"
         ),
