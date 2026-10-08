@@ -293,11 +293,14 @@ def fetch_futures_candles(symbol):
     search_symbol = "NIFTY" if symbol == "NIFTY" else "BANKNIFTY"
 
     try:
-        response = s.get(
-            CHART + "/v1/exchanges/symbolsDynamic",
-            params={"symbol": search_symbol, "segment": "FO"},
-            timeout=15,
-        )
+        response = s.post(
+    CHART + "/v1/exchanges/symbolsDynamic",
+    json={
+        "symbol": search_symbol,
+        "segment": "FO",
+    },
+    timeout=15,
+)
         response.raise_for_status()
         result = response.json()
     except Exception:
