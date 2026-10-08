@@ -316,7 +316,7 @@ def fetch_futures_candles(symbol):
         token = str(item.get("scripcode", "")).strip()
         if not token or not item_symbol:
             continue
-        if item_type == "futures" and item_symbol.endswith("FUT"):
+        if item_type == "" and item_symbol.endswith("FUT"):
             candidates.append(item)
 
     if not candidates:
@@ -370,11 +370,11 @@ def fetch_futures_candles(symbol):
     }
 
     try:
-        response = s.get(
-            CHART + "/v1/charts/symbolHistoricalData",
-            params=payload,
-            timeout=20,
-        )
+        response = s.post(
+    CHART + "/v1/charts/symbolHistoricalData",
+    json=payload,
+    timeout=20,
+)
         response.raise_for_status()
         result = response.json()
     except Exception:
