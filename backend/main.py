@@ -3,11 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 
-import math
-import statistics
 import time
-from datetime import datetime, timedelta, timezone
-from urllib.parse import quote
+from datetime import datetime, timezone
 
 try:
     from curl_cffi import requests as cffi_requests
@@ -44,24 +41,30 @@ FRONTEND_FILE = BASE_DIR.parent / "frontend" / "index.html"
 
 
 # ============================================================
-# NSE CONFIG
+# NSE CONFIGURATION
 # ============================================================
 
 NSE_HOME = "https://www.nseindia.com"
-NSE_OPTION_PAGE = f"{NSE_HOME}/option-chain"
+
+NSE_OPTION_PAGE = (
+    "https://www.nseindia.com/option-chain"
+)
 
 NSE_CONTRACT_INFO = (
-    f"{NSE_HOME}/api/option-chain-contract-info"
+    "https://www.nseindia.com/api/"
+    "option-chain-contract-info"
 )
 
 NSE_OPTION_CHAIN_V3 = (
-    f"{NSE_HOME}/api/option-chain-v3"
+    "https://www.nseindia.com/api/"
+    "option-chain-v3"
 )
 
 NSE_ALL_INDICES = (
-    f"{NSE_HOME}/api/allIndices"
+    "https://www.nseindia.com/api/allIndices"
 )
 
+# NSE OpenChart
 CHART_URL = (
     "https://charting.nseindia.com/v1/charts/"
     "symbolHistoricalData"
@@ -73,12 +76,14 @@ SYMBOLS_DYNAMIC_URL = (
 )
 
 
-# NSE OpenChart tokens
+# ============================================================
+# KNOWN NSE INDEX TOKENS
+# ============================================================
+
 INDEX_TOKENS = {
     "NIFTY": "26000",
     "BANKNIFTY": "26004",
 }
-
 
 INDEX_NAMES = {
     "NIFTY": "NIFTY 50",
@@ -87,11 +92,12 @@ INDEX_NAMES = {
 
 
 # ============================================================
-# SESSION
+# SESSION / CACHE
 # ============================================================
 
 session = None
-last_warm_time = 0
+
+last_nse_warm = 0
 
 CACHE = {}
 
@@ -111,7 +117,8 @@ def create_session():
     session.headers.update({
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
             "Chrome/140.0.0.0 Safari/537.36"
         ),
         "Accept": (
@@ -137,10 +144,6 @@ create_session()
 # BASIC HELPERS
 # ============================================================
 
-def now_ms():
-    return int(time.time() * 1000)
-
-
 def safe_float(value, default=0.0):
     try:
         if value is None:
@@ -148,12 +151,19 @@ def safe_float(value, default=0.0):
 
         if isinstance(value, str):
             value = (
-                value.replace(",", "")
+                value
+                .replace(",", "")
                 .replace("%", "")
                 .strip()
             )
 
-            if value in ("", "-", "--", "NA", "N/A"):
+            if value in (
+                "",
+                "-",
+                "--",
+                "NA",
+                "N/A"
+            ):
                 return default
 
         return float(value)
@@ -169,12 +179,19 @@ def safe_int(value, default=0):
 
         if isinstance(value, str):
             value = (
-                value.replace(",", "")
+                value
+                .replace(",", "")
                 .replace("%", "")
                 .strip()
             )
 
-            if value in ("", "-", "--", "NA", "N/A"):
+            if value in (
+                "",
+                "-",
+                "--",
+                "NA",
+                "N/A"
+            ):
                 return default
 
         return int(float(value))
@@ -183,39 +200,56 @@ def safe_int(value, default=0):
         return default
 
 
-def first_value(d, keys, default=None):
-    if not isinstance(d, dict):
+def first_value(data, keys, default=None):
+
+    if not isinstance(data, dict):
         return default
 
     for key in keys:
-        if key in d and d[key] is not None:
-            return d[key]
+
+        if (
+            key in data
+            and data[key] is not None
+        ):
+            return data[key]
 
     return default
 
 
 def clamp(value, low, high):
-    return max(low, min(high, value))
+    return max(
+        low,
+        min(high, value)
+    )
 
 
-def round_or_zero(value, digits=2):
+def rounded(value, digits=2):
+
     try:
-        return round(float(value), digits)
+        return round(
+            float(value),
+            digits
+        )
     except Exception:
         return 0
 
 
 # ============================================================
-# NSE SESSION / REQUEST
+# NSE SESSION
 # ============================================================
 
 def warm_nse(force=False):
-    global last_warm_time
 
-    if not force and time.time() - last_warm_time < 60:
+    global last_nse_warm
+
+    if (
+        not force
+        and time.time() - last_nse_warm < 60
+    ):
         return
 
     try:
+
         session.get(
             NSE_HOME,
             timeout=12
@@ -226,13 +260,18 @@ def warm_nse(force=False):
             timeout=12
         )
 
-        last_warm_time = time.time()
+        last_nse_warm = time.time()
 
     except Exception:
         pass
 
 
-def nse_get(url, params=None, retries=2):
+def nse_get(
+    url,
+    params=None,
+    retries=2
+):
+
     global session
 
     if session is None:
@@ -240,7 +279,9 @@ def nse_get(url, params=None, retries=2):
 
     last_error = None
 
-    for attempt in range(retries + 1):
+    for attempt in range(
+        retries + 1
+    ):
 
         try:
 
@@ -253,29 +294,43 @@ def nse_get(url, params=None, retries=2):
                 timeout=20
             )
 
-            if response.status_code in (401, 403):
-                warm_nse(force=True)
+            if response.status_code in (
+                401,
+                403
+            ):
+
+                warm_nse(
+                    force=True
+                )
+
                 continue
 
             if response.status_code != 200:
+
                 raise RuntimeError(
-                    f"HTTP {response.status_code} from {url}"
+                    f"HTTP {response.status_code} "
+                    f"from {url}"
                 )
 
             try:
                 return response.json()
+
             except Exception:
+
                 raise RuntimeError(
                     f"Invalid JSON from {url}"
                 )
 
         except Exception as exc:
+
             last_error = exc
 
             if attempt < retries:
                 time.sleep(1)
 
-    raise RuntimeError(str(last_error))
+    raise RuntimeError(
+        str(last_error)
+    )
 
 
 # ============================================================
@@ -283,13 +338,6 @@ def nse_get(url, params=None, retries=2):
 # ============================================================
 
 def get_expiry_dates(symbol):
-    """
-    Current NSE flow:
-
-    /api/option-chain-contract-info?symbol=NIFTY
-
-    returns available expiries.
-    """
 
     warm_nse()
 
@@ -304,43 +352,54 @@ def get_expiry_dates(symbol):
 
     if isinstance(data, dict):
 
-        # Current format
-        expiry_dates = data.get("expiryDates", [])
+        expiry_dates = data.get(
+            "expiryDates",
+            []
+        )
 
-        # Some responses may wrap it
         if not expiry_dates:
 
-            records = data.get("records", {})
+            records = data.get(
+                "records",
+                {}
+            )
 
-            if isinstance(records, dict):
-                expiry_dates = records.get(
-                    "expiryDates",
-                    []
+            if isinstance(
+                records,
+                dict
+            ):
+
+                expiry_dates = (
+                    records.get(
+                        "expiryDates",
+                        []
+                    )
                 )
 
-    if not isinstance(expiry_dates, list):
+    if not isinstance(
+        expiry_dates,
+        list
+    ):
         expiry_dates = []
 
-    expiry_dates = [
+    return [
         str(x).strip()
         for x in expiry_dates
         if x
     ]
 
-    return expiry_dates
-
 
 def fetch_option_chain_v3(symbol):
-    """
-    Fetch nearest-expiry index option chain
-    using the current NSE v3 API.
-    """
 
-    expiry_dates = get_expiry_dates(symbol)
+    expiry_dates = get_expiry_dates(
+        symbol
+    )
 
     if not expiry_dates:
+
         raise RuntimeError(
-            f"No NSE expiry dates returned for {symbol}"
+            f"No NSE expiry dates returned "
+            f"for {symbol}"
         )
 
     expiry = expiry_dates[0]
@@ -354,29 +413,51 @@ def fetch_option_chain_v3(symbol):
         }
     )
 
-    if not isinstance(data, dict):
+    if not isinstance(
+        data,
+        dict
+    ):
+
         raise RuntimeError(
-            f"Invalid option-chain response for {symbol}"
+            f"Invalid option-chain response "
+            f"for {symbol}"
         )
 
-    records = data.get("records", {})
+    records = data.get(
+        "records",
+        {}
+    )
 
-    if not isinstance(records, dict):
+    if not isinstance(
+        records,
+        dict
+    ):
         records = {}
 
-    rows = records.get("data", [])
+    rows = records.get(
+        "data",
+        []
+    )
 
-    if not isinstance(rows, list):
+    if not isinstance(
+        rows,
+        list
+    ):
         rows = []
 
-    # Some NSE responses may expose data elsewhere
     if not rows:
-        rows = data.get("data", [])
 
-    if not isinstance(rows, list):
+        rows = data.get(
+            "data",
+            []
+        )
+
+    if not isinstance(
+        rows,
+        list
+    ):
         rows = []
 
-    # Underlying value
     underlying = safe_float(
         first_value(
             records,
@@ -390,6 +471,7 @@ def fetch_option_chain_v3(symbol):
     )
 
     if underlying <= 0:
+
         underlying = safe_float(
             first_value(
                 data,
@@ -416,9 +498,6 @@ def fetch_option_chain_v3(symbol):
 # ============================================================
 
 def fetch_index_spot(symbol):
-    """
-    Fallback spot source from NSE allIndices.
-    """
 
     try:
 
@@ -430,7 +509,10 @@ def fetch_index_spot(symbol):
 
         if isinstance(data, dict):
 
-            if isinstance(data.get("data"), list):
+            if isinstance(
+                data.get("data"),
+                list
+            ):
                 candidates.extend(
                     data["data"]
                 )
@@ -445,7 +527,10 @@ def fetch_index_spot(symbol):
 
         for item in candidates:
 
-            if not isinstance(item, dict):
+            if not isinstance(
+                item,
+                dict
+            ):
                 continue
 
             name = str(
@@ -461,66 +546,59 @@ def fetch_index_spot(symbol):
                 )
             ).upper()
 
-            if symbol == "NIFTY" and (
-                "NIFTY 50" in name
-                or name == "NIFTY"
-            ):
-                return safe_float(
-                    first_value(
-                        item,
-                        [
-                            "last",
-                            "lastPrice",
-                            "ltp",
-                            "lastPriceValue"
-                        ],
-                        0
-                    )
+            value = safe_float(
+                first_value(
+                    item,
+                    [
+                        "last",
+                        "lastPrice",
+                        "ltp",
+                        "lastPriceValue"
+                    ],
+                    0
                 )
+            )
 
-            if symbol == "BANKNIFTY" and (
-                "NIFTY BANK" in name
-                or "BANK NIFTY" in name
-                or name == "BANKNIFTY"
-            ):
-                return safe_float(
-                    first_value(
-                        item,
-                        [
-                            "last",
-                            "lastPrice",
-                            "ltp",
-                            "lastPriceValue"
-                        ],
-                        0
-                    )
-                )
+            if symbol == "NIFTY":
+
+                if (
+                    "NIFTY 50" in name
+                    or name == "NIFTY"
+                ):
+                    return value
+
+            if symbol == "BANKNIFTY":
+
+                if (
+                    "NIFTY BANK" in name
+                    or "BANK NIFTY" in name
+                    or name == "BANKNIFTY"
+                ):
+                    return value
 
     except Exception:
         pass
 
-    return 0.0
+    return 0
 
 
 # ============================================================
-# OPTION SIDE NORMALISATION
+# OPTION DATA
 # ============================================================
 
-def extract_option_side(row, side):
-    """
-    Normalises NSE CE / PE fields.
+def extract_option_side(
+    row,
+    side
+):
 
-    Handles possible:
-      CE / PE
-      ce / pe
-      call / put
-      CALL / PUT
-    """
-
-    if not isinstance(row, dict):
+    if not isinstance(
+        row,
+        dict
+    ):
         return {}
 
     if side == "CE":
+
         keys = [
             "CE",
             "ce",
@@ -529,7 +607,9 @@ def extract_option_side(row, side):
             "calls",
             "CALLS"
         ]
+
     else:
+
         keys = [
             "PE",
             "pe",
@@ -539,23 +619,24 @@ def extract_option_side(row, side):
             "PUTS"
         ]
 
-    side_data = {}
-
     for key in keys:
 
         value = row.get(key)
 
-        if isinstance(value, dict):
-            side_data = value
-            break
+        if isinstance(
+            value,
+            dict
+        ):
+            return value
 
-    return side_data
+    return {}
 
 
-def option_value(side_data, field, default=0):
-    """
-    Handles camelCase and snake_case fields.
-    """
+def option_value(
+    side,
+    field,
+    default=0
+):
 
     aliases = {
 
@@ -601,66 +682,134 @@ def option_value(side_data, field, default=0):
             "implied_volatility",
             "IV",
             "iv"
-        ],
-
-        "bid": [
-            "bidprice",
-            "bidPrice",
-            "bid",
-            "Bid"
-        ],
-
-        "ask": [
-            "askPrice",
-            "askprice",
-            "ask",
-            "Ask"
         ]
     }
 
     return safe_float(
         first_value(
-            side_data,
-            aliases.get(field, [field]),
+            side,
+            aliases.get(
+                field,
+                [field]
+            ),
             default
         ),
         default
     )
 
 
-# ============================================================
-# OPTION CHAIN ANALYSIS
-# ============================================================
+def classify_option_position(
+    oi_change,
+    ltp_change,
+    side
+):
 
-def analyse_options(chain, symbol, spot):
-    rows = chain.get("rows", [])
+    # OI increasing
+    if oi_change > 0:
+
+        if ltp_change > 0:
+
+            return (
+                "LONG BUILDUP"
+            )
+
+        if ltp_change < 0:
+
+            return (
+                "WRITING"
+            )
+
+    # OI decreasing
+    elif oi_change < 0:
+
+        if ltp_change > 0:
+
+            return (
+                "SHORT COVERING"
+            )
+
+        if ltp_change < 0:
+
+            return (
+                "LONG UNWINDING"
+            )
+
+    return "NEUTRAL"
+
+
+def calculate_max_pain(
+    rows
+):
 
     if not rows:
-        return {
-            "callOI": 0,
-            "putOI": 0,
-            "callChangeOI": 0,
-            "putChangeOI": 0,
-            "callVolume": 0,
-            "putVolume": 0,
-            "pcr": 0,
-            "iv": 0,
-            "support": 0,
-            "support2": 0,
-            "resistance": 0,
-            "resistance2": 0,
-            "callPositioning": "UNKNOWN",
-            "putPositioning": "UNKNOWN",
-            "rows": [],
-            "maxPain": 0,
-            "atmStrike": 0
-        }
+        return 0
+
+    strikes = [
+        x["strike"]
+        for x in rows
+        if x["strike"] > 0
+    ]
+
+    if not strikes:
+        return 0
+
+    best_strike = 0
+    lowest_pain = None
+
+    for expiry_strike in strikes:
+
+        pain = 0
+
+        for row in rows:
+
+            strike = row["strike"]
+
+            ce_oi = row["ce"]["oi"]
+            pe_oi = row["pe"]["oi"]
+
+            if expiry_strike > strike:
+
+                pain += (
+                    expiry_strike
+                    - strike
+                ) * ce_oi
+
+            if expiry_strike < strike:
+
+                pain += (
+                    strike
+                    - expiry_strike
+                ) * pe_oi
+
+        if (
+            lowest_pain is None
+            or pain < lowest_pain
+        ):
+
+            lowest_pain = pain
+            best_strike = expiry_strike
+
+    return best_strike
+
+
+def analyse_options(
+    chain,
+    spot
+):
+
+    raw_rows = chain.get(
+        "rows",
+        []
+    )
 
     parsed = []
 
-    for row in rows:
+    for row in raw_rows:
 
-        if not isinstance(row, dict):
+        if not isinstance(
+            row,
+            dict
+        ):
             continue
 
         strike = safe_float(
@@ -679,58 +828,116 @@ def analyse_options(chain, symbol, spot):
         if strike <= 0:
             continue
 
-        ce = extract_option_side(row, "CE")
-        pe = extract_option_side(row, "PE")
+        ce = extract_option_side(
+            row,
+            "CE"
+        )
+
+        pe = extract_option_side(
+            row,
+            "PE"
+        )
+
+        ce_ltp = option_value(
+            ce,
+            "ltp"
+        )
+
+        pe_ltp = option_value(
+            pe,
+            "ltp"
+        )
+
+        ce_change = option_value(
+            ce,
+            "change"
+        )
+
+        pe_change = option_value(
+            pe,
+            "change"
+        )
 
         parsed.append({
+
             "strike": strike,
 
             "ce": {
-                "oi": option_value(ce, "oi"),
-                "change_oi": option_value(
+                "oi": option_value(
                     ce,
-                    "change_oi"
+                    "oi"
                 ),
-                "ltp": option_value(
-                    ce,
-                    "ltp"
-                ),
-                "change": option_value(
-                    ce,
-                    "change"
-                ),
-                "volume": option_value(
-                    ce,
-                    "volume"
-                ),
-                "iv": option_value(
-                    ce,
-                    "iv"
-                )
+
+                "change_oi":
+                    option_value(
+                        ce,
+                        "change_oi"
+                    ),
+
+                "ltp": ce_ltp,
+
+                "change": ce_change,
+
+                "volume":
+                    option_value(
+                        ce,
+                        "volume"
+                    ),
+
+                "iv":
+                    option_value(
+                        ce,
+                        "iv"
+                    ),
+
+                "position":
+                    classify_option_position(
+                        option_value(
+                            ce,
+                            "change_oi"
+                        ),
+                        ce_change,
+                        "CE"
+                    )
             },
 
             "pe": {
-                "oi": option_value(pe, "oi"),
-                "change_oi": option_value(
+                "oi": option_value(
                     pe,
-                    "change_oi"
+                    "oi"
                 ),
-                "ltp": option_value(
-                    pe,
-                    "ltp"
-                ),
-                "change": option_value(
-                    pe,
-                    "change"
-                ),
-                "volume": option_value(
-                    pe,
-                    "volume"
-                ),
-                "iv": option_value(
-                    pe,
-                    "iv"
-                )
+
+                "change_oi":
+                    option_value(
+                        pe,
+                        "change_oi"
+                    ),
+
+                "ltp": pe_ltp,
+
+                "change": pe_change,
+
+                "volume":
+                    option_value(
+                        pe,
+                        "volume"
+                    ),
+
+                "iv":
+                    option_value(
+                        pe,
+                        "iv"
+                    ),
+
+                "position":
+                    classify_option_position(
+                        option_value(
+                            pe,
+                            "change_oi"
+                        ),
+                        pe_change,
+                        "PE"
+                    )
             }
         })
 
@@ -756,34 +963,17 @@ def analyse_options(chain, symbol, spot):
             "atmStrike": 0
         }
 
-    # --------------------------------------------------------
-    # ATM
-    # --------------------------------------------------------
-
     atm_row = min(
         parsed,
-        key=lambda x: abs(
+        key=lambda x:
+        abs(
             x["strike"] - spot
         )
     )
 
     atm = atm_row["strike"]
 
-    # --------------------------------------------------------
-    # Restrict detailed analysis around ATM
-    # --------------------------------------------------------
-
-    nearby = sorted(
-        parsed,
-        key=lambda x: abs(
-            x["strike"] - atm
-        )
-    )[:15]
-
-    # --------------------------------------------------------
-    # Total OI
-    # --------------------------------------------------------
-
+    # Total chain OI
     call_oi = sum(
         x["ce"]["oi"]
         for x in parsed
@@ -820,9 +1010,14 @@ def analyse_options(chain, symbol, spot):
         else 0
     )
 
-    # --------------------------------------------------------
-    # ATM IV
-    # --------------------------------------------------------
+    # Nearby strikes
+    nearby = sorted(
+        parsed,
+        key=lambda x:
+        abs(
+            x["strike"] - atm
+        )
+    )[:15]
 
     iv_values = []
 
@@ -839,221 +1034,139 @@ def analyse_options(chain, symbol, spot):
             )
 
     iv = (
-        statistics.mean(iv_values)
+        sum(iv_values)
+        / len(iv_values)
         if iv_values
         else 0
     )
 
     # --------------------------------------------------------
-    # Resistance based on CE OI
+    # Support / resistance by OI
     # --------------------------------------------------------
 
-    resistance_candidates = sorted(
-        [
-            x for x in parsed
-            if x["strike"] >= atm
-        ],
-        key=lambda x: x["ce"]["oi"],
+    below = [
+        x for x in parsed
+        if x["strike"] < atm
+    ]
+
+    above = [
+        x for x in parsed
+        if x["strike"] > atm
+    ]
+
+    below.sort(
+        key=lambda x:
+        x["pe"]["oi"],
         reverse=True
     )
 
-    resistance_levels = []
-
-    for x in resistance_candidates:
-
-        if x["ce"]["oi"] <= 0:
-            continue
-
-        resistance_levels.append(
-            x["strike"]
-        )
-
-        if len(resistance_levels) >= 2:
-            break
-
-    # --------------------------------------------------------
-    # Support based on PE OI
-    # --------------------------------------------------------
-
-    support_candidates = sorted(
-        [
-            x for x in parsed
-            if x["strike"] <= atm
-        ],
-        key=lambda x: x["pe"]["oi"],
+    above.sort(
+        key=lambda x:
+        x["ce"]["oi"],
         reverse=True
-    )
-
-    support_levels = []
-
-    for x in support_candidates:
-
-        if x["pe"]["oi"] <= 0:
-            continue
-
-        support_levels.append(
-            x["strike"]
-        )
-
-        if len(support_levels) >= 2:
-            break
-
-    resistance = (
-        resistance_levels[0]
-        if resistance_levels
-        else 0
-    )
-
-    resistance2 = (
-        resistance_levels[1]
-        if len(resistance_levels) > 1
-        else 0
     )
 
     support = (
-        support_levels[0]
-        if support_levels
+        below[0]["strike"]
+        if below
         else 0
     )
 
     support2 = (
-        support_levels[1]
-        if len(support_levels) > 1
+        below[1]["strike"]
+        if len(below) > 1
+        else 0
+    )
+
+    resistance = (
+        above[0]["strike"]
+        if above
+        else 0
+    )
+
+    resistance2 = (
+        above[1]["strike"]
+        if len(above) > 1
         else 0
     )
 
     # --------------------------------------------------------
-    # Positioning
+    # ATM positioning
     # --------------------------------------------------------
 
-    atm_ce = atm_row["ce"]
-    atm_pe = atm_row["pe"]
-
-    call_positioning = classify_option_position(
-        atm_ce["change_oi"],
-        atm_ce["change"],
-        atm_ce["ltp"]
+    call_positioning = (
+        atm_row["ce"]["position"]
     )
 
-    put_positioning = classify_option_position(
-        atm_pe["change_oi"],
-        atm_pe["change"],
-        atm_pe["ltp"]
+    put_positioning = (
+        atm_row["pe"]["position"]
     )
-
-    # --------------------------------------------------------
-    # Max pain
-    # --------------------------------------------------------
-
-    max_pain = calculate_max_pain(parsed)
 
     return {
-        "callOI": call_oi,
-        "putOI": put_oi,
-        "callChangeOI": call_change,
-        "putChangeOI": put_change,
-        "callVolume": call_volume,
-        "putVolume": put_volume,
 
-        "pcr": pcr,
-        "iv": iv,
+        "callOI": safe_int(
+            call_oi
+        ),
 
-        "support": support,
-        "support2": support2,
+        "putOI": safe_int(
+            put_oi
+        ),
 
-        "resistance": resistance,
-        "resistance2": resistance2,
+        "callChangeOI":
+            safe_int(
+                call_change
+            ),
 
-        "callPositioning": call_positioning,
-        "putPositioning": put_positioning,
+        "putChangeOI":
+            safe_int(
+                put_change
+            ),
 
-        "rows": parsed,
+        "callVolume":
+            safe_int(
+                call_volume
+            ),
 
-        "maxPain": max_pain,
-        "atmStrike": atm,
+        "putVolume":
+            safe_int(
+                put_volume
+            ),
 
-        "atmCE": atm_ce,
-        "atmPE": atm_pe
+        "pcr":
+            pcr,
+
+        "iv":
+            iv,
+
+        "support":
+            support,
+
+        "support2":
+            support2,
+
+        "resistance":
+            resistance,
+
+        "resistance2":
+            resistance2,
+
+        "callPositioning":
+            call_positioning,
+
+        "putPositioning":
+            put_positioning,
+
+        "rows":
+            parsed,
+
+        "maxPain":
+            calculate_max_pain(
+                parsed
+            ),
+
+        "atmStrike":
+            atm
     }
-
-
-def classify_option_position(change_oi, price_change, ltp):
-    """
-    Option premium + OI interpretation.
-
-    OI ↑ + premium ↓ = writing
-    OI ↓ + premium ↑ = short covering
-    OI ↑ + premium ↑ = long buildup
-    OI ↓ + premium ↓ = long unwinding
-    """
-
-    if change_oi > 0 and price_change < 0:
-        return "WRITING"
-
-    if change_oi < 0 and price_change > 0:
-        return "SHORT COVERING"
-
-    if change_oi > 0 and price_change > 0:
-        return "LONG BUILDUP"
-
-    if change_oi < 0 and price_change < 0:
-        return "LONG UNWINDING"
-
-    return "NEUTRAL"
-
-
-def calculate_max_pain(rows):
-    if not rows:
-        return 0
-
-    strikes = [
-        x["strike"]
-        for x in rows
-        if x["strike"] > 0
-    ]
-
-    if not strikes:
-        return 0
-
-    # Limit calculation for performance
-    strikes = sorted(set(strikes))
-
-    if len(strikes) > 120:
-        middle = len(strikes) // 2
-        strikes = strikes[
-            max(0, middle - 60):
-            middle + 60
-        ]
-
-    best_strike = strikes[0]
-    lowest_loss = float("inf")
-
-    for expiry_price in strikes:
-
-        loss = 0.0
-
-        for row in rows:
-
-            strike = row["strike"]
-
-            call_oi = row["ce"]["oi"]
-            put_oi = row["pe"]["oi"]
-
-            if expiry_price > strike:
-                loss += (
-                    expiry_price - strike
-                ) * call_oi
-
-            if expiry_price < strike:
-                loss += (
-                    strike - expiry_price
-                ) * put_oi
-
-        if loss < lowest_loss:
-            lowest_loss = loss
-            best_strike = expiry_price
-
-    return best_strike
 
 
 # ============================================================
@@ -1061,6 +1174,7 @@ def calculate_max_pain(rows):
 # ============================================================
 
 def warm_chart():
+
     try:
 
         session.get(
@@ -1072,103 +1186,115 @@ def warm_chart():
         pass
 
 
-def fetch_chart(symbol, interval=5, days=3):
+def parse_chart_response(data):
+
     """
-    Fetch live NSE index candles from the NSE charting API.
+    OpenChart normally returns:
+
+    {
+        "status": true,
+        "data": [
+            {
+                "time": ...,
+                "open": ...,
+                "high": ...,
+                "low": ...,
+                "close": ...,
+                "volume": ...
+            }
+        ]
+    }
+
+    This parser also supports array-style
+    candle responses.
     """
 
-    token = INDEX_TOKENS.get(symbol)
-
-    if not token:
+    if not isinstance(
+        data,
+        dict
+    ):
         return []
 
-    try:
-        warm_chart()
+    candidates = []
 
-        end_time = int(time.time())
-        start_time = int(
-            time.time() - days * 86400
-        )
+    # Normal OpenChart response
+    value = data.get(
+        "data"
+    )
 
-        payload = {
-            "token": str(token),
-            "fromDate": start_time,
-            "toDate": end_time,
-            "symbol": INDEX_NAMES.get(
-                symbol,
-                symbol
-            ),
-            "symbolType": "Index",
-            "chartType": "I",
-            "timeInterval": int(interval)
-        }
+    if isinstance(
+        value,
+        list
+    ):
+        candidates = value
 
-        # Charting NSE uses its own domain/session.
-        chart_headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/140.0.0.0 Safari/537.36"
-            ),
-            "Accept": (
-                "application/json, text/plain, */*"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Content-Type": "application/json",
-            "Origin": (
-                "https://charting.nseindia.com"
-            ),
-            "Referer": (
-                "https://charting.nseindia.com/"
-            )
-        }
+    elif isinstance(
+        value,
+        dict
+    ):
 
-        response = session.post(
-            CHART_URL,
-            json=payload,
-            headers=chart_headers,
-            timeout=20
-        )
-
-        if response.status_code != 200:
-            return []
-
-        data = response.json()
-
-        if not isinstance(data, dict):
-            return []
-
-        # NSE normally returns:
-        #
-        # {
-        #   "status": true,
-        #   "data": [...]
-        # }
-
-        if data.get("status") is False:
-            return []
-
-        raw_candles = data.get(
+        for key in (
             "data",
-            []
-        )
+            "candles",
+            "result",
+            "results"
+        ):
 
-        if not isinstance(raw_candles, list):
-            return []
+            sub = value.get(
+                key
+            )
 
-        candles = []
+            if isinstance(
+                sub,
+                list
+            ):
 
-        for item in raw_candles:
+                candidates = sub
+                break
 
-            if not isinstance(item, dict):
-                continue
+    # Other possible wrappers
+    if not candidates:
+
+        for key in (
+            "candles",
+            "grapthData",
+            "graphData",
+            "result",
+            "results"
+        ):
+
+            value = data.get(
+                key
+            )
+
+            if isinstance(
+                value,
+                list
+            ):
+
+                candidates = value
+                break
+
+    parsed = []
+
+    for item in candidates:
+
+        # ----------------------------------------------------
+        # Dictionary candle
+        # ----------------------------------------------------
+
+        if isinstance(
+            item,
+            dict
+        ):
 
             timestamp = first_value(
                 item,
                 [
                     "time",
-                    "timestamp"
+                    "timestamp",
+                    "date",
+                    "datetime"
                 ],
                 None
             )
@@ -1233,151 +1359,40 @@ def fetch_chart(symbol, interval=5, days=3):
                 )
             )
 
-            if close <= 0:
-                continue
+        # ----------------------------------------------------
+        # Array candle
+        # ----------------------------------------------------
 
-            candles.append({
-                "time": timestamp,
-                "open": open_price,
-                "high": high,
-                "low": low,
-                "close": close,
-                "volume": volume
-            })
-
-        candles.sort(
-            key=lambda x: (
-                x["time"]
-                if x["time"] is not None
-                else 0
-            )
-        )
-
-        return candles
-
-    except Exception:
-        return []
-    return parse_chart_response(data)
-
-
-def parse_chart_response(data):
-    """
-    Handles several OpenChart response layouts.
-    """
-
-    if not isinstance(data, dict):
-        return []
-
-    candidates = []
-
-    for key in [
-        "data",
-        "grapthData",
-        "graphData",
-        "candles",
-        "result",
-        "results"
-    ]:
-
-        value = data.get(key)
-
-        if isinstance(value, list):
-            candidates = value
-            break
-
-        if isinstance(value, dict):
-
-            for subkey in [
-                "data",
-                "candles",
-                "result"
-            ]:
-
-                sub = value.get(subkey)
-
-                if isinstance(sub, list):
-                    candidates = sub
-                    break
-
-            if candidates:
-                break
-
-    parsed = []
-
-    for item in candidates:
-
-        # Dictionary format
-        if isinstance(item, dict):
-
-            ts = first_value(
-                item,
-                [
-                    "time",
-                    "timestamp",
-                    "date",
-                    "datetime"
-                ],
-                None
-            )
-
-            open_price = safe_float(
-                first_value(
-                    item,
-                    ["open", "Open", "o"],
-                    0
-                )
-            )
-
-            high = safe_float(
-                first_value(
-                    item,
-                    ["high", "High", "h"],
-                    0
-                )
-            )
-
-            low = safe_float(
-                first_value(
-                    item,
-                    ["low", "Low", "l"],
-                    0
-                )
-            )
-
-            close = safe_float(
-                first_value(
-                    item,
-                    ["close", "Close", "c"],
-                    0
-                )
-            )
-
-            volume = safe_float(
-                first_value(
-                    item,
-                    [
-                        "volume",
-                        "Volume",
-                        "v"
-                    ],
-                    0
-                )
-            )
-
-        # Array format
-        elif isinstance(item, list):
+        elif isinstance(
+            item,
+            list
+        ):
 
             if len(item) < 5:
                 continue
 
-            ts = item[0]
-            open_price = safe_float(item[1])
-            high = safe_float(item[2])
-            low = safe_float(item[3])
-            close = safe_float(item[4])
+            timestamp = item[0]
+
+            open_price = safe_float(
+                item[1]
+            )
+
+            high = safe_float(
+                item[2]
+            )
+
+            low = safe_float(
+                item[3]
+            )
+
+            close = safe_float(
+                item[4]
+            )
 
             volume = (
-                safe_float(item[5])
+                safe_float(
+                    item[5]
+                )
                 if len(item) > 5
                 else 0
             )
@@ -1385,23 +1400,165 @@ def parse_chart_response(data):
         else:
             continue
 
-        if close <= 0:
+        if (
+            close <= 0
+            or high <= 0
+            or low <= 0
+        ):
             continue
 
         parsed.append({
-            "time": ts,
-            "open": open_price,
-            "high": high,
-            "low": low,
-            "close": close,
-            "volume": volume
+
+            "time":
+                timestamp,
+
+            "open":
+                open_price,
+
+            "high":
+                high,
+
+            "low":
+                low,
+
+            "close":
+                close,
+
+            "volume":
+                volume
         })
 
+    # OpenChart timestamps are milliseconds.
     parsed.sort(
-        key=lambda x: str(x["time"])
+        key=lambda x:
+        safe_float(
+            x["time"],
+            0
+        )
     )
 
     return parsed
+
+
+def fetch_chart(
+    symbol,
+    interval=5,
+    days=3
+):
+
+    """
+    Fetch live NSE 5-minute candles.
+
+    IMPORTANT:
+    OpenChart uses POST with JSON payload.
+    """
+
+    token = INDEX_TOKENS.get(
+        symbol
+    )
+
+    if not token:
+        return []
+
+    try:
+
+        warm_chart()
+
+        end_time = int(
+            time.time()
+        )
+
+        start_time = int(
+            time.time()
+            - days * 86400
+        )
+
+        payload = {
+
+            "token":
+                str(token),
+
+            "fromDate":
+                start_time,
+
+            "toDate":
+                end_time,
+
+            "symbol":
+                INDEX_NAMES.get(
+                    symbol,
+                    symbol
+                ),
+
+            "symbolType":
+                "Index",
+
+            "chartType":
+                "I",
+
+            "timeInterval":
+                int(interval)
+        }
+
+        headers = {
+
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/140.0.0.0 "
+                "Safari/537.36"
+            ),
+
+            "Accept":
+                "application/json, "
+                "text/plain, */*",
+
+            "Accept-Language":
+                "en-US,en;q=0.9",
+
+            "Content-Type":
+                "application/json",
+
+            "Origin":
+                "https://charting.nseindia.com",
+
+            "Referer":
+                "https://charting.nseindia.com/"
+        }
+
+        response = session.post(
+            CHART_URL,
+            json=payload,
+            headers=headers,
+            timeout=20
+        )
+
+        if response.status_code != 200:
+            return []
+
+        data = response.json()
+
+        if not isinstance(
+            data,
+            dict
+        ):
+            return []
+
+        if data.get(
+            "status"
+        ) is False:
+            return []
+
+        candles = parse_chart_response(
+            data
+        )
+
+        return candles
+
+    except Exception:
+        return []
 
 
 # ============================================================
@@ -1409,21 +1566,28 @@ def parse_chart_response(data):
 # ============================================================
 
 def ema(values, period):
+
     if not values:
         return 0
 
     if len(values) < period:
-        return sum(values) / len(values)
 
-    multiplier = 2 / (period + 1)
+        return sum(values) / len(
+            values
+        )
+
+    multiplier = (
+        2 / (period + 1)
+    )
 
     result = sum(
         values[:period]
     ) / period
 
-    for price in values[period:]:
+    for value in values[period:]:
+
         result = (
-            (price - result)
+            (value - result)
             * multiplier
             + result
         )
@@ -1432,72 +1596,99 @@ def ema(values, period):
 
 
 def rsi(values, period=14):
-    if len(values) < 2:
+
+    if len(values) <= period:
         return 50
 
-    changes = [
-        values[i] - values[i - 1]
-        for i in range(1, len(values))
-    ]
+    gains = []
+    losses = []
 
-    if len(changes) < period:
-        period = len(changes)
+    for i in range(
+        1,
+        len(values)
+    ):
 
-    gains = [
-        max(x, 0)
-        for x in changes[-period:]
-    ]
+        change = (
+            values[i]
+            - values[i - 1]
+        )
 
-    losses = [
-        abs(min(x, 0))
-        for x in changes[-period:]
-    ]
+        gains.append(
+            max(change, 0)
+        )
+
+        losses.append(
+            max(-change, 0)
+        )
 
     avg_gain = (
-        sum(gains) / period
-        if period
-        else 0
+        sum(gains[-period:])
+        / min(
+            period,
+            len(gains)
+        )
     )
 
     avg_loss = (
-        sum(losses) / period
-        if period
-        else 0
+        sum(losses[-period:])
+        / min(
+            period,
+            len(losses)
+        )
     )
 
     if avg_loss == 0:
-        return 70 if avg_gain > 0 else 50
 
-    rs = avg_gain / avg_loss
+        if avg_gain > 0:
+            return 70
 
-    return 100 - (
-        100 / (1 + rs)
+        return 50
+
+    rs = (
+        avg_gain
+        / avg_loss
+    )
+
+    return (
+        100
+        - (
+            100
+            / (1 + rs)
+        )
     )
 
 
-def atr(candles, period=14):
+def atr(
+    candles,
+    period=14
+):
+
     if len(candles) < 2:
         return 0
 
     trs = []
 
-    for i in range(1, len(candles)):
+    for i in range(
+        1,
+        len(candles)
+    ):
 
         current = candles[i]
         previous = candles[i - 1]
 
         tr = max(
-            current["high"] -
-            current["low"],
+
+            current["high"]
+            - current["low"],
 
             abs(
-                current["high"] -
-                previous["close"]
+                current["high"]
+                - previous["close"]
             ),
 
             abs(
-                current["low"] -
-                previous["close"]
+                current["low"]
+                - previous["close"]
             )
         )
 
@@ -1506,13 +1697,18 @@ def atr(candles, period=14):
     if not trs:
         return 0
 
+    sample = trs[-period:]
+
     return (
-        sum(trs[-period:]) /
-        min(period, len(trs))
+        sum(sample)
+        / len(sample)
     )
 
 
-def calculate_vwap(candles):
+def calculate_vwap(
+    candles
+):
+
     if not candles:
         return 0
 
@@ -1521,19 +1717,25 @@ def calculate_vwap(candles):
 
     for candle in candles:
 
-        typical = (
-            candle["high"] +
-            candle["low"] +
-            candle["close"]
-        ) / 3
-
-        volume = candle["volume"]
+        volume = safe_float(
+            candle.get(
+                "volume",
+                0
+            )
+        )
 
         if volume <= 0:
             continue
 
+        typical = (
+            candle["high"]
+            + candle["low"]
+            + candle["close"]
+        ) / 3
+
         total_pv += (
-            typical * volume
+            typical
+            * volume
         )
 
         total_volume += volume
@@ -1542,12 +1744,15 @@ def calculate_vwap(candles):
         return 0
 
     return (
-        total_pv /
-        total_volume
+        total_pv
+        / total_volume
     )
 
 
-def structure_analysis(candles):
+def structure_analysis(
+    candles
+):
+
     if len(candles) < 6:
         return "MIXED / RANGE"
 
@@ -1583,16 +1788,25 @@ def structure_analysis(candles):
         and lows[-3] < lows[0]
     )
 
-    if higher_highs and higher_lows:
+    if (
+        higher_highs
+        and higher_lows
+    ):
         return "HH-HL / UPTREND"
 
-    if lower_highs and lower_lows:
+    if (
+        lower_highs
+        and lower_lows
+    ):
         return "LH-LL / DOWNTREND"
 
     return "MIXED / RANGE"
 
 
-def volume_state(candles):
+def volume_state(
+    candles
+):
+
     if len(candles) < 20:
         return "NORMAL"
 
@@ -1605,17 +1819,19 @@ def volume_state(candles):
     if not volumes:
         return "UNAVAILABLE"
 
-    avg = (
-        sum(volumes) /
-        len(volumes)
+    average = (
+        sum(volumes)
+        / len(volumes)
     )
 
     current = candles[-1]["volume"]
 
-    if avg <= 0:
+    if average <= 0:
         return "NORMAL"
 
-    ratio = current / avg
+    ratio = (
+        current / average
+    )
 
     if ratio >= 1.5:
         return "HIGH"
@@ -1627,86 +1843,119 @@ def volume_state(candles):
 
 
 # ============================================================
-# OI INTELLIGENCE
+# OI ENGINE
 # ============================================================
 
-def oi_score(options, spot):
+def oi_score(options):
+
     score = 0
     reasons = []
 
-    call_pos = options["callPositioning"]
-    put_pos = options["putPositioning"]
+    call_pos = (
+        options["callPositioning"]
+    )
+
+    put_pos = (
+        options["putPositioning"]
+    )
 
     # CE
     if call_pos == "WRITING":
+
         score -= 8
+
         reasons.append(
             "call writing is adding resistance"
         )
 
     elif call_pos == "SHORT COVERING":
+
         score += 8
+
         reasons.append(
             "call short covering is reducing resistance"
         )
 
     elif call_pos == "LONG BUILDUP":
+
         score += 3
 
     elif call_pos == "LONG UNWINDING":
+
         score -= 2
 
     # PE
     if put_pos == "WRITING":
+
         score += 8
+
         reasons.append(
             "put writing is supporting price"
         )
 
     elif put_pos == "SHORT COVERING":
+
         score -= 8
+
         reasons.append(
             "put short covering is weakening support"
         )
 
     elif put_pos == "LONG BUILDUP":
+
         score -= 3
 
     elif put_pos == "LONG UNWINDING":
+
         score += 2
 
     # PCR
     pcr = options["pcr"]
 
     if pcr >= 1.20:
+
         score += 5
+
         reasons.append(
             "PCR is strongly supportive"
         )
 
     elif pcr >= 1.00:
+
         score += 3
+
         reasons.append(
             "PCR is supportive"
         )
 
     elif pcr <= 0.70:
+
         score -= 5
+
         reasons.append(
             "PCR is bearish"
         )
 
     elif pcr <= 0.85:
+
         score -= 3
+
         reasons.append(
             "PCR is mildly bearish"
         )
 
-    return clamp(score, -25, 25), reasons
+    return (
+        clamp(
+            score,
+            -25,
+            25
+        ),
+        reasons
+    )
 
 
 # ============================================================
-# TECHNICAL ENGINE
+# TECHNICAL SCORE
 # ============================================================
 
 def technical_score(
@@ -1726,102 +1975,140 @@ def technical_score(
     if vwap > 0:
 
         if price > vwap:
+
             score += 8
+
             reasons.append(
                 "price is above VWAP"
             )
 
         elif price < vwap:
+
             score -= 8
+
             reasons.append(
                 "price is below VWAP"
             )
 
     # EMA
-    if ema9_value > ema21_value:
+    if (
+        ema9_value
+        > ema21_value
+    ):
+
         score += 6
+
         reasons.append(
             "EMA9 is above EMA21"
         )
 
-    elif ema9_value < ema21_value:
+    elif (
+        ema9_value
+        < ema21_value
+    ):
+
         score -= 6
+
         reasons.append(
             "EMA9 is below EMA21"
         )
 
     # RSI
     if rsi_value >= 58:
+
         score += 5
+
         reasons.append(
             "RSI supports bullish momentum"
         )
 
     elif rsi_value <= 42:
+
         score -= 5
+
         reasons.append(
             "RSI supports bearish momentum"
         )
 
     # Structure
-    if structure == "HH-HL / UPTREND":
+    if structure == (
+        "HH-HL / UPTREND"
+    ):
+
         score += 6
+
         reasons.append(
             "price structure is HH-HL"
         )
 
-    elif structure == "LH-LL / DOWNTREND":
+    elif structure == (
+        "LH-LL / DOWNTREND"
+    ):
+
         score -= 6
+
         reasons.append(
             "price structure is LH-LL"
         )
 
     # Volume
     if volume_state_value == "HIGH":
+
         if score > 0:
+
             score += 3
+
             reasons.append(
                 "high volume confirms momentum"
             )
+
         elif score < 0:
+
             score -= 3
+
             reasons.append(
                 "high volume confirms selling pressure"
             )
 
-    return clamp(score, -25, 25), reasons
+    return (
+        clamp(
+            score,
+            -25,
+            25
+        ),
+        reasons
+    )
 
 
 # ============================================================
-# MARKET ENGINE
+# DECISION ENGINE
 # ============================================================
 
 def build_engine(
-    symbol,
     price,
     vwap,
     ema9_value,
     ema21_value,
     rsi_value,
-    atr_value,
     structure,
     volume_state_value,
     options
 ):
 
-    tech, tech_reasons = technical_score(
-        price,
-        vwap,
-        ema9_value,
-        ema21_value,
-        rsi_value,
-        structure,
-        volume_state_value
+    tech, tech_reasons = (
+        technical_score(
+            price,
+            vwap,
+            ema9_value,
+            ema21_value,
+            rsi_value,
+            structure,
+            volume_state_value
+        )
     )
 
-    oi, oi_reasons = oi_score(
-        options,
-        price
+    oi, oi_reasons = (
+        oi_score(options)
     )
 
     pcr = options["pcr"]
@@ -1840,14 +2127,10 @@ def build_engine(
     elif pcr <= 0.85:
         pcr_score = -5
 
-    # --------------------------------------------------------
-    # Directional score
-    # --------------------------------------------------------
-
     directional = (
-        tech +
-        oi +
-        pcr_score
+        tech
+        + oi
+        + pcr_score
     )
 
     directional = clamp(
@@ -1856,24 +2139,16 @@ def build_engine(
         60
     )
 
-    # --------------------------------------------------------
-    # Market regime
-    # --------------------------------------------------------
+    if directional >= 20:
 
-    bullish = directional >= 20
-    bearish = directional <= -20
-
-    conflict = (
-        abs(directional) < 20
-    )
-
-    if bullish:
         condition = "BULLISH"
 
-    elif bearish:
+    elif directional <= -20:
+
         condition = "BEARISH"
 
     else:
+
         condition = "SIDEWAYS"
 
     # --------------------------------------------------------
@@ -1883,16 +2158,22 @@ def build_engine(
     bullish_confirmation = 0
     bearish_confirmation = 0
 
-    if price > vwap > 0:
+    if (
+        vwap > 0
+        and price > vwap
+    ):
         bullish_confirmation += 1
 
-    if price < vwap and vwap > 0:
+    if (
+        vwap > 0
+        and price < vwap
+    ):
         bearish_confirmation += 1
 
     if ema9_value > ema21_value:
         bullish_confirmation += 1
 
-    if ema9_value < ema21_value:
+    elif ema9_value < ema21_value:
         bearish_confirmation += 1
 
     if rsi_value >= 55:
@@ -1901,10 +2182,14 @@ def build_engine(
     if rsi_value <= 45:
         bearish_confirmation += 1
 
-    if structure == "HH-HL / UPTREND":
+    if structure == (
+        "HH-HL / UPTREND"
+    ):
         bullish_confirmation += 1
 
-    if structure == "LH-LL / DOWNTREND":
+    if structure == (
+        "LH-LL / DOWNTREND"
+    ):
         bearish_confirmation += 1
 
     if options["callPositioning"] in (
@@ -1913,7 +2198,9 @@ def build_engine(
     ):
         bullish_confirmation += 1
 
-    if options["putPositioning"] == "WRITING":
+    if options["putPositioning"] == (
+        "WRITING"
+    ):
         bullish_confirmation += 1
 
     if options["putPositioning"] in (
@@ -1922,35 +2209,44 @@ def build_engine(
     ):
         bearish_confirmation += 1
 
-    if options["callPositioning"] == "WRITING":
+    if options["callPositioning"] == (
+        "WRITING"
+    ):
         bearish_confirmation += 1
 
     # --------------------------------------------------------
     # Score
-    #
-    # Base 50 + directional contribution.
-    # Maximum 100, minimum 0.
     # --------------------------------------------------------
 
-    score = 50 + directional
+    score = (
+        50 + directional
+    )
 
-    # Stronger buyer confirmation
     if condition == "BULLISH":
+
         score += (
             bullish_confirmation * 3
         )
 
     elif condition == "BEARISH":
+
         score += (
             bearish_confirmation * 3
         )
 
-    # Sideways penalty
     if condition == "SIDEWAYS":
-        score = min(score, 58)
+
+        score = min(
+            score,
+            58
+        )
 
     score = int(
-        clamp(score, 0, 100)
+        clamp(
+            score,
+            0,
+            100
+        )
     )
 
     # --------------------------------------------------------
@@ -1962,22 +2258,18 @@ def build_engine(
         bearish_confirmation
     )
 
-    confidence = (
-        55 +
-        abs(directional) * 0.55 +
-        confirmation_count * 4
-    )
-
     confidence = int(
         clamp(
-            confidence,
+            55
+            + abs(directional) * 0.55
+            + confirmation_count * 4,
             50,
             96
         )
     )
 
     # --------------------------------------------------------
-    # Signal
+    # Final signal
     # --------------------------------------------------------
 
     signal = "WAIT"
@@ -1987,6 +2279,7 @@ def build_engine(
         and bullish_confirmation >= 4
         and score >= 70
     ):
+
         signal = "BUY CALL"
 
     elif (
@@ -1994,6 +2287,7 @@ def build_engine(
         and bearish_confirmation >= 4
         and score >= 70
     ):
+
         signal = "BUY PUT"
 
     # Conflict protection
@@ -2001,6 +2295,7 @@ def build_engine(
         bullish_confirmation >= 3
         and bearish_confirmation >= 3
     ):
+
         signal = "WAIT"
         condition = "SIDEWAYS"
 
@@ -2009,29 +2304,41 @@ def build_engine(
     # --------------------------------------------------------
 
     reasons = (
-        tech_reasons +
-        oi_reasons
+        tech_reasons
+        + oi_reasons
     )
 
     if pcr_score > 0:
+
         reasons.append(
             "PCR supports bullish positioning"
         )
 
     elif pcr_score < 0:
+
         reasons.append(
             "PCR is bearish"
         )
 
+    if not reasons:
+
+        reasons.append(
+            "insufficient directional confirmation"
+        )
+
     # --------------------------------------------------------
-    # Natural language story
+    # Story
     # --------------------------------------------------------
+
+    reason_text = "; ".join(
+        reasons[:5]
+    )
 
     if signal == "BUY CALL":
 
         story = (
             "Bullish momentum is confirmed because "
-            + "; ".join(reasons[:5])
+            + reason_text
             + ". CALL buying conditions are confirmed."
         )
 
@@ -2039,7 +2346,7 @@ def build_engine(
 
         story = (
             "Bearish momentum is confirmed because "
-            + "; ".join(reasons[:5])
+            + reason_text
             + ". PUT buying conditions are confirmed."
         )
 
@@ -2047,7 +2354,7 @@ def build_engine(
 
         story = (
             "Bullish momentum is developing because "
-            + "; ".join(reasons[:5])
+            + reason_text
             + ". Waiting for stronger CALL confirmation."
         )
 
@@ -2055,7 +2362,7 @@ def build_engine(
 
         story = (
             "Bearish momentum is developing because "
-            + "; ".join(reasons[:5])
+            + reason_text
             + ". Waiting for stronger PUT confirmation."
         )
 
@@ -2063,21 +2370,41 @@ def build_engine(
 
         story = (
             "Market is sideways or conflicting because "
-            + "; ".join(reasons[:5])
+            + reason_text
             + ". Avoiding a low-quality option-buying entry."
         )
 
     return {
-        "condition": condition,
-        "score": score,
-        "directional_score": directional,
-        "confidence": confidence,
-        "signal": signal,
-        "story": story,
-        "technical_score": tech,
-        "oi_score": oi,
-        "pcr_score": pcr_score,
-        "reasons": reasons
+
+        "condition":
+            condition,
+
+        "score":
+            score,
+
+        "directional_score":
+            directional,
+
+        "confidence":
+            confidence,
+
+        "signal":
+            signal,
+
+        "story":
+            story,
+
+        "technical_score":
+            tech,
+
+        "oi_score":
+            oi,
+
+        "pcr_score":
+            pcr_score,
+
+        "reasons":
+            reasons
     }
 
 
@@ -2088,11 +2415,14 @@ def build_engine(
 def trade_levels(
     signal,
     price,
-    atr_value,
-    options
+    atr_value
 ):
 
-    if signal == "WAIT" or price <= 0:
+    if (
+        signal == "WAIT"
+        or price <= 0
+    ):
+
         return {
             "entry": 0,
             "stoploss": 0,
@@ -2100,57 +2430,64 @@ def trade_levels(
             "target2": 0
         }
 
+    # Fallback ATR only if actual ATR
+    # is unavailable.
     if atr_value <= 0:
-        atr_value = price * 0.001
 
-    # ATR-based risk
-    risk = atr_value * 1.25
+        atr_value = (
+            price * 0.001
+        )
+
+    risk = (
+        atr_value * 1.25
+    )
 
     if signal == "BUY CALL":
 
-        entry = price
+        return {
 
-        stop = (
-            price - risk
-        )
+            "entry":
+                rounded(price),
 
-        target1 = (
-            price + risk * 1.4
-        )
+            "stoploss":
+                rounded(
+                    price - risk
+                ),
 
-        target2 = (
-            price + risk * 2.2
-        )
+            "target1":
+                rounded(
+                    price
+                    + risk * 1.4
+                ),
 
-    else:
-
-        entry = price
-
-        stop = (
-            price + risk
-        )
-
-        target1 = (
-            price - risk * 1.4
-        )
-
-        target2 = (
-            price - risk * 2.2
-        )
+            "target2":
+                rounded(
+                    price
+                    + risk * 2.2
+                )
+        }
 
     return {
-        "entry": round_or_zero(
-            entry
-        ),
-        "stoploss": round_or_zero(
-            stop
-        ),
-        "target1": round_or_zero(
-            target1
-        ),
-        "target2": round_or_zero(
-            target2
-        )
+
+        "entry":
+            rounded(price),
+
+        "stoploss":
+            rounded(
+                price + risk
+            ),
+
+        "target1":
+            rounded(
+                price
+                - risk * 1.4
+            ),
+
+        "target2":
+            rounded(
+                price
+                - risk * 2.2
+            )
     }
 
 
@@ -2183,30 +2520,34 @@ def suggested_strike(
             if x["strike"] >= atm
         ]
 
-        if not candidates:
-            return atm
+        if candidates:
 
-        return min(
-            candidates,
-            key=lambda x:
-            abs(x["strike"] - atm)
-        )["strike"]
+            return min(
+                candidates,
+                key=lambda x:
+                abs(
+                    x["strike"]
+                    - atm
+                )
+            )["strike"]
 
-    if signal == "BUY PUT":
+    elif signal == "BUY PUT":
 
         candidates = [
             x for x in rows
             if x["strike"] <= atm
         ]
 
-        if not candidates:
-            return atm
+        if candidates:
 
-        return min(
-            candidates,
-            key=lambda x:
-            abs(x["strike"] - atm)
-        )["strike"]
+            return min(
+                candidates,
+                key=lambda x:
+                abs(
+                    x["strike"]
+                    - atm
+                )
+            )["strike"]
 
     return atm
 
@@ -2215,29 +2556,41 @@ def suggested_strike(
 # MAIN MARKET DATA
 # ============================================================
 
-def generate_market_data(symbol):
-    symbol = symbol.upper().strip()
+def generate_market_data(
+    symbol
+):
+
+    symbol = (
+        symbol
+        .upper()
+        .strip()
+    )
 
     if symbol not in (
         "NIFTY",
         "BANKNIFTY"
     ):
+
         raise ValueError(
             "Unsupported symbol"
         )
 
-    cache_key = symbol
+    # --------------------------------------------------------
+    # Cache
+    # --------------------------------------------------------
 
-    # Short cache prevents NSE request flooding
-    cached = CACHE.get(cache_key)
+    cached = CACHE.get(
+        symbol
+    )
 
     if cached:
 
         if (
-            time.time() -
-            cached["time"]
+            time.time()
+            - cached["time"]
             < CACHE_TTL
         ):
+
             return cached["data"]
 
     # --------------------------------------------------------
@@ -2260,12 +2613,13 @@ def generate_market_data(symbol):
     )
 
     if price <= 0:
+
         price = fetch_index_spot(
             symbol
         )
 
     # --------------------------------------------------------
-    # INDEX CANDLES
+    # 5-MINUTE CANDLES
     # --------------------------------------------------------
 
     candles = fetch_chart(
@@ -2274,8 +2628,24 @@ def generate_market_data(symbol):
         days=3
     )
 
-    # If candle endpoint temporarily fails,
-    # keep the option-chain engine alive.
+    candle_count = len(
+        candles
+    )
+
+    # Defaults
+    ema9_value = price
+    ema21_value = price
+    rsi_value = 50
+    atr_value = 0
+    vwap_value = 0
+    structure = "MIXED / RANGE"
+    volume_state_value = "UNAVAILABLE"
+    volume = 0
+
+    # --------------------------------------------------------
+    # Technical calculations
+    # --------------------------------------------------------
+
     if candles:
 
         closes = [
@@ -2285,13 +2655,6 @@ def generate_market_data(symbol):
         ]
 
         if closes:
-
-            candle_price = closes[-1]
-
-            # Prefer current NSE option-chain
-            # underlying value if available.
-            if price <= 0:
-                price = candle_price
 
             ema9_value = ema(
                 closes,
@@ -2313,95 +2676,67 @@ def generate_market_data(symbol):
                 14
             )
 
-            vwap_value = calculate_vwap(
-                candles
+            vwap_value = (
+                calculate_vwap(
+                    candles
+                )
             )
 
-            structure = structure_analysis(
-                candles
+            structure = (
+                structure_analysis(
+                    candles
+                )
             )
 
             volume_state_value = (
-                volume_state(candles)
+                volume_state(
+                    candles
+                )
             )
 
-            volume = (
-                candles[-1]["volume"]
-                if candles
-                else 0
+            volume = safe_float(
+                candles[-1].get(
+                    "volume",
+                    0
+                )
             )
-
-        else:
-
-            ema9_value = price
-            ema21_value = price
-            rsi_value = 50
-            atr_value = 0
-            vwap_value = 0
-            structure = "MIXED / RANGE"
-            volume_state_value = "UNAVAILABLE"
-            volume = 0
-
-    else:
-
-        ema9_value = price
-        ema21_value = price
-        rsi_value = 50
-        atr_value = 0
-        vwap_value = 0
-        structure = "MIXED / RANGE"
-        volume_state_value = "UNAVAILABLE"
-        volume = 0
 
     # --------------------------------------------------------
-    # OPTIONS
+    # Options
     # --------------------------------------------------------
 
     options = analyse_options(
         chain,
-        symbol,
         price
     )
 
-    # If VWAP couldn't be calculated from index candles,
-    # try a futures source later. For now keep 0 rather
-    # than inventing a value.
-    vwap_status = (
-        "LIVE 5-MIN VWAP"
-        if vwap_value > 0
-        else "VWAP UNAVAILABLE"
-    )
-
     # --------------------------------------------------------
-    # ENGINE
+    # Engine
     # --------------------------------------------------------
 
     engine = build_engine(
-        symbol=symbol,
         price=price,
         vwap=vwap_value,
         ema9_value=ema9_value,
         ema21_value=ema21_value,
         rsi_value=rsi_value,
-        atr_value=atr_value,
         structure=structure,
         volume_state_value=volume_state_value,
         options=options
     )
 
     # --------------------------------------------------------
-    # TRADE LEVELS
+    # Trade levels
     # --------------------------------------------------------
 
     levels = trade_levels(
         engine["signal"],
         price,
-        atr_value,
-        options
+        atr_value
     )
 
     # --------------------------------------------------------
-    # STRIKE
+    # Strike
     # --------------------------------------------------------
 
     strike = suggested_strike(
@@ -2410,46 +2745,83 @@ def generate_market_data(symbol):
     )
 
     # --------------------------------------------------------
-    # VWAP STATUS
+    # VWAP position
     # --------------------------------------------------------
 
     if vwap_value <= 0:
+
+        vwap_status = (
+            "VWAP UNAVAILABLE"
+        )
+
         vwap_position = (
-            "WAITING FOR CANDLE DATA"
+            "VWAP UNAVAILABLE"
         )
 
     elif price > vwap_value:
-        vwap_position = "ABOVE VWAP"
+
+        vwap_status = (
+            "LIVE 5-MIN VWAP"
+        )
+
+        vwap_position = (
+            "ABOVE VWAP"
+        )
 
     elif price < vwap_value:
-        vwap_position = "BELOW VWAP"
+
+        vwap_status = (
+            "LIVE 5-MIN VWAP"
+        )
+
+        vwap_position = (
+            "BELOW VWAP"
+        )
 
     else:
-        vwap_position = "AT VWAP"
+
+        vwap_status = (
+            "LIVE 5-MIN VWAP"
+        )
+
+        vwap_position = (
+            "AT VWAP"
+        )
 
     # --------------------------------------------------------
-    # DATA STATUS
+    # Data status
     # --------------------------------------------------------
 
-    data_status = (
-        "LIVE NSE V3 OPTION CHAIN "
-        "+ LIVE 5-MIN CANDLES"
-    )
+    if candle_count > 0:
+
+        data_status = (
+            "LIVE NSE V3 OPTION CHAIN "
+            "+ LIVE 5-MIN CANDLES"
+        )
+
+    else:
+
+        data_status = (
+            "LIVE NSE V3 OPTION CHAIN "
+            "+ CANDLE DATA UNAVAILABLE"
+        )
 
     # --------------------------------------------------------
-    # FINAL API RESPONSE
+    # Final result
     # --------------------------------------------------------
 
     result = {
+
         "ok": True,
 
-        "symbol": symbol,
+        "symbol":
+            symbol,
 
-        "price": round_or_zero(
-            price
-        ),
+        "price":
+            rounded(price),
 
-        "change": 0,
+        "change":
+            0,
 
         "market_condition":
             engine["condition"],
@@ -2472,8 +2844,9 @@ def generate_market_data(symbol):
         "story":
             engine["story"],
 
+        # Technicals
         "vwap":
-            round_or_zero(
+            rounded(
                 vwap_value
             ),
 
@@ -2484,22 +2857,22 @@ def generate_market_data(symbol):
             vwap_position,
 
         "ema9":
-            round_or_zero(
+            rounded(
                 ema9_value
             ),
 
         "ema21":
-            round_or_zero(
+            rounded(
                 ema21_value
             ),
 
         "rsi":
-            round_or_zero(
+            rounded(
                 rsi_value
             ),
 
         "atr":
-            round_or_zero(
+            rounded(
                 atr_value
             ),
 
@@ -2507,21 +2880,25 @@ def generate_market_data(symbol):
             structure,
 
         "volume":
-            round_or_zero(
+            rounded(
                 volume
             ),
 
         "volumeState":
             volume_state_value,
 
+        "candleCount":
+            candle_count,
+
+        # Option chain
         "pcr":
-            round_or_zero(
+            rounded(
                 options["pcr"],
                 2
             ),
 
         "iv":
-            round_or_zero(
+            rounded(
                 options["iv"],
                 2
             ),
@@ -2533,20 +2910,27 @@ def generate_market_data(symbol):
             options["putOI"],
 
         "oi_change": {
+
             "call":
                 options["callChangeOI"],
+
             "put":
                 options["putChangeOI"]
         },
 
         "oi_positioning": {
+
             "call":
-                "CALL " +
-                options["callPositioning"],
+                "CE "
+                + options[
+                    "callPositioning"
+                ],
 
             "put":
-                "PUT " +
-                options["putPositioning"]
+                "PE "
+                + options[
+                    "putPositioning"
+                ]
         },
 
         "callVolume":
@@ -2555,6 +2939,7 @@ def generate_market_data(symbol):
         "putVolume":
             options["putVolume"],
 
+        # S/R
         "resistance":
             options["resistance"],
 
@@ -2567,6 +2952,7 @@ def generate_market_data(symbol):
         "support2":
             options["support2"],
 
+        # Trade
         "entry":
             levels["entry"],
 
@@ -2585,6 +2971,7 @@ def generate_market_data(symbol):
         "atmStrike":
             options["atmStrike"],
 
+        # Option chain metadata
         "max_pain":
             options["maxPain"],
 
@@ -2594,21 +2981,31 @@ def generate_market_data(symbol):
         "expiryDates":
             chain["expiryDates"][:5],
 
+        # Status
         "data_status":
             data_status,
 
         "engine": {
+
             "technical_score":
-                engine["technical_score"],
+                engine[
+                    "technical_score"
+                ],
 
             "oi_score":
-                engine["oi_score"],
+                engine[
+                    "oi_score"
+                ],
 
             "pcr_score":
-                engine["pcr_score"],
+                engine[
+                    "pcr_score"
+                ],
 
             "reasons":
-                engine["reasons"]
+                engine[
+                    "reasons"
+                ]
         },
 
         "timestamp":
@@ -2617,16 +3014,20 @@ def generate_market_data(symbol):
             ).isoformat()
     }
 
-    CACHE[cache_key] = {
-        "time": time.time(),
-        "data": result
+    CACHE[symbol] = {
+
+        "time":
+            time.time(),
+
+        "data":
+            result
     }
 
     return result
 
 
 # ============================================================
-# API ROUTES
+# ROUTES
 # ============================================================
 
 @app.get("/")
@@ -2639,10 +3040,13 @@ def home():
         )
 
     return JSONResponse({
+
         "service":
             "Option Intelligence Free",
+
         "status":
             "running",
+
         "message":
             "Frontend file not found"
     })
@@ -2652,11 +3056,15 @@ def home():
 def health():
 
     return {
+
         "ok": True,
+
         "service":
             "Option Intelligence Free",
+
         "nse_v3":
             True,
+
         "curl_cffi":
             CURL_CFFI_AVAILABLE
     }
@@ -2669,7 +3077,11 @@ def market(
     )
 ):
 
-    symbol = symbol.upper().strip()
+    symbol = (
+        symbol
+        .upper()
+        .strip()
+    )
 
     try:
 
@@ -2682,9 +3094,16 @@ def market(
         return JSONResponse(
             status_code=503,
             content={
-                "ok": False,
-                "symbol": symbol,
-                "error": str(exc),
+
+                "ok":
+                    False,
+
+                "symbol":
+                    symbol,
+
+                "error":
+                    str(exc),
+
                 "message":
                     "Live NSE market data is temporarily unavailable."
             }
@@ -2699,11 +3118,17 @@ def market(
 def startup():
 
     try:
-        warm_nse(force=True)
+
+        warm_nse(
+            force=True
+        )
+
     except Exception:
         pass
 
     try:
+
         warm_chart()
+
     except Exception:
         pass
