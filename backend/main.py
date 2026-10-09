@@ -258,11 +258,22 @@ def fetch_candles(symbol):
     except Exception:
         return []
 
-    if not result.get("status") or not result.get("data"):
+    if not isinstance(result, dict) or result.get("status") is False:
+        return []
+
+    raw_data = result.get("data", [])
+    if isinstance(raw_data, dict):
+        raw_data = (
+            raw_data.get("data")
+            or raw_data.get("candles")
+            or raw_data.get("result")
+            or []
+        )
+    if not isinstance(raw_data, list):
         return []
 
     candles = []
-    for item in result.get("data", []):
+    for item in raw_data:
         if not isinstance(item, dict):
             continue
 
@@ -647,7 +658,7 @@ def technical_analysis(candles, spot, futures_candles=None):
         if safe_float(c.get("close")) > 0
     ]
 
-    if len(closes) < 21:
+    if len(closes) < 2:
         return {
             "vwap": 0.0,
             "ema9": 0.0,
@@ -658,18 +669,19 @@ def technical_analysis(candles, spot, futures_candles=None):
             "volume_state": "WAITING",
             "structure": "WAITING FOR CANDLE DATA",
             "score": 0,
-            "reasons": ["5-minute candle data unavailable"],
+            "reasons": ["insufficient 5-minute candle data"],
         }
 
+    # EMA9 and EMA21 are calculated from the available candle history.
+    # The decision engine separately controls whether the technical feed
+    # is sufficiently mature for a trade signal.
     ema9 = ema_series(closes, 9)[-1]
     ema21 = ema_series(closes, 21)[-1]
 
-    # Use index candles for price indicators. Use futures candles for
-    # VWAP/volume when available because index volume can be zero.
     volume_source = futures_candles if futures_candles else candles
     vwap = vwap_value(volume_source)
-    rsi = rsi_value(closes, 14)
-    atr = atr_value(candles, 14)
+    rsi = rsi_value(closes, 14) if len(closes) >= 15 else 50.0
+    atr = atr_value(candles, 14) if len(candles) >= 15 else 0.0
     volume = safe_float(volume_source[-1].get("volume")) if volume_source else 0.0
     vstate = volume_state(volume_source)
     structure = market_structure(candles)
@@ -693,18 +705,19 @@ def technical_analysis(candles, spot, futures_candles=None):
         score -= 7
         reasons.append("EMA9 is below EMA21")
 
-    if 55 <= rsi <= 70:
-        score += 6
-        reasons.append("RSI supports bullish momentum")
-    elif 30 <= rsi < 45:
-        score -= 6
-        reasons.append("RSI supports bearish momentum")
-    elif rsi > 75:
-        score -= 2
-        reasons.append("RSI is overextended")
-    elif rsi < 25:
-        score += 2
-        reasons.append("RSI is deeply oversold")
+    if len(closes) >= 15:
+        if 55 <= rsi <= 70:
+            score += 6
+            reasons.append("RSI supports bullish momentum")
+        elif 30 <= rsi < 45:
+            score -= 6
+            reasons.append("RSI supports bearish momentum")
+        elif rsi > 75:
+            score -= 2
+            reasons.append("RSI is overextended")
+        elif rsi < 25:
+            score += 2
+            reasons.append("RSI is deeply oversold")
 
     if structure == "HH-HL BULLISH":
         score += 7
@@ -1002,6 +1015,8 @@ def market(symbol: str = "NIFTY"):
             "rsi": 50,
             "atr": 0,
             "volume": 0,
+            "candleCount": len(live.get("candles", [])),
+            "futuresCandleCount": len(live.get("futures_candles", [])),
             "vwapStatus": "WAITING FOR CANDLE DATA",
             "structure": "WAITING FOR CANDLE DATA",
             "pcr": 0,
@@ -1093,6 +1108,8 @@ def market(symbol: str = "NIFTY"):
         "atr": technical["atr"],
         "volume": technical["volume"],
         "volumeState": technical["volume_state"],
+        "candleCount": len(candles),
+        "futuresCandleCount": len(futures_candles),
         "pcr": oi["pcr"],
         "callOI": oi["call_oi"],
         "putOI": oi["put_oi"],
